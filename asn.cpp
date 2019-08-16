@@ -76,7 +76,7 @@ bool BERLengthDecode(BufferedTransformation &bt, lword &length, bool &definiteLe
 bool BERLengthDecode(BufferedTransformation &bt, size_t &length)
 {
 	lword lw = 0;
-	bool definiteLength;
+	bool definiteLength = false;
 	if (!BERLengthDecode(bt, lw, definiteLength))
 		BERDecodeError();
 	if (!SafeConvert(lw, length))
@@ -330,7 +330,8 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 			if (!m_queue.Get(m_id))
 				return;
 			m_queue.TransferTo(CurrentTarget(), 1);
-			m_state = LENGTH;	// fall through
+			m_state = LENGTH;
+		// fall through
 		case LENGTH:
 		{
 			byte b;
@@ -342,7 +343,7 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 				break;
 			}
 			ByteQueue::Walker walker(m_queue);
-			bool definiteLength;
+			bool definiteLength = false;
 			if (!BERLengthDecode(walker, m_lengthRemaining, definiteLength))
 				return;
 			m_queue.TransferTo(CurrentTarget(), walker.GetCurrentPosition());
@@ -356,15 +357,16 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 				m_state = IDENTIFIER;
 				break;
 			}
-			m_state = BODY;		// fall through
+			m_state = BODY;
 		}
+		// fall through
 		case BODY:
 			m_lengthRemaining -= m_queue.TransferTo(CurrentTarget(), m_lengthRemaining);
 
 			if (m_lengthRemaining == 0)
 				m_state = IDENTIFIER;
-
-		case TAIL:			// silence warnings
+		// fall through
+		case TAIL:
 		case ALL_DONE:
 		default: ;;
 		}
@@ -392,14 +394,20 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 	}
 }
 
+BERGeneralDecoder::BERGeneralDecoder(BufferedTransformation &inQueue)
+	: m_inQueue(inQueue), m_length(0), m_finished(false)
+{
+	Init(DefaultTag);
+}
+
 BERGeneralDecoder::BERGeneralDecoder(BufferedTransformation &inQueue, byte asnTag)
-	: m_inQueue(inQueue), m_finished(false)
+	: m_inQueue(inQueue), m_length(0), m_finished(false)
 {
 	Init(asnTag);
 }
 
 BERGeneralDecoder::BERGeneralDecoder(BERGeneralDecoder &inQueue, byte asnTag)
-	: m_inQueue(inQueue), m_finished(false)
+	: m_inQueue(inQueue), m_length(0), m_finished(false)
 {
 	Init(asnTag);
 }
@@ -499,15 +507,18 @@ lword BERGeneralDecoder::ReduceLength(lword delta)
 	return delta;
 }
 
-DERGeneralEncoder::DERGeneralEncoder(BufferedTransformation &outQueue, byte asnTag)
-	: ByteQueue(), m_outQueue(outQueue), m_finished(false), m_asnTag(asnTag)
+DERGeneralEncoder::DERGeneralEncoder(BufferedTransformation &outQueue)
+	: m_outQueue(outQueue), m_asnTag(DefaultTag), m_finished(false)
 {
 }
 
-// TODO: GCC (and likely other compilers) identify this as a copy constructor; and not a constructor.
-//   We have to wait until Crypto++ 6.0 to fix it because the signature change breaks versioning.
+DERGeneralEncoder::DERGeneralEncoder(BufferedTransformation &outQueue, byte asnTag)
+	: m_outQueue(outQueue), m_asnTag(asnTag), m_finished(false)
+{
+}
+
 DERGeneralEncoder::DERGeneralEncoder(DERGeneralEncoder &outQueue, byte asnTag)
-	: ByteQueue(), m_outQueue(outQueue), m_finished(false), m_asnTag(asnTag)
+	: m_outQueue(outQueue), m_asnTag(asnTag), m_finished(false)
 {
 }
 

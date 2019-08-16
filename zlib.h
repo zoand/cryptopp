@@ -1,3 +1,8 @@
+// zlib.h - originally written and placed in the public domain by Wei Dai
+
+/// \file zlib.h
+/// \brief ZLIB compression and decompression (RFC 1950)
+
 #ifndef CRYPTOPP_ZLIB_H
 #define CRYPTOPP_ZLIB_H
 
@@ -37,10 +42,10 @@ public:
 	class UnsupportedAlgorithm : public Err {public: UnsupportedAlgorithm() : Err(INVALID_DATA_FORMAT, "ZlibDecompressor: unsupported algorithm") {}};
 	class UnsupportedPresetDictionary : public Err {public: UnsupportedPresetDictionary() : Err(INVALID_DATA_FORMAT, "ZlibDecompressor: unsupported preset dictionary") {}};
 
-	//! \brief Construct a ZlibDecompressor
-	//! \param attachment a \ BufferedTransformation to attach to this object
-	//! \param repeat decompress multiple compressed streams in series
-	//! \param autoSignalPropagation 0 to turn off MessageEnd signal
+	/// \brief Construct a ZlibDecompressor
+	/// \param attachment a \ BufferedTransformation to attach to this object
+	/// \param repeat decompress multiple compressed streams in series
+	/// \param autoSignalPropagation 0 to turn off MessageEnd signal
 	ZlibDecompressor(BufferedTransformation *attachment = NULLPTR, bool repeat = false, int autoSignalPropagation = -1);
 	unsigned int GetLog2WindowSize() const {return m_log2WindowSize;}
 

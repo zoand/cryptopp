@@ -6,13 +6,8 @@
 #include "ida.h"
 #include "stdcpp.h"
 #include "algebra.h"
-#include "gf2_32.h"
 #include "polynomi.h"
 #include "polynomi.cpp"
-
-ANONYMOUS_NAMESPACE_BEGIN
-const CryptoPP::GF2_32 field;
-NAMESPACE_END
 
 NAMESPACE_BEGIN(CryptoPP)
 
@@ -145,7 +140,7 @@ void RawIDA::ComputeV(unsigned int i)
 	if (m_outputToInput[i] == size_t(m_threshold) && i * size_t(m_threshold) <= 1000*1000)
 	{
 		m_v[i].resize(m_threshold);
-		PrepareBulkPolynomialInterpolationAt(field, m_v[i].begin(), m_outputChannelIds[i], &(m_inputChannelIds[0]), m_w.begin(), m_threshold);
+		PrepareBulkPolynomialInterpolationAt(m_gf32, m_v[i].begin(), m_outputChannelIds[i], &(m_inputChannelIds[0]), m_w.begin(), m_threshold);
 	}
 }
 
@@ -161,7 +156,7 @@ void RawIDA::AddOutputChannel(word32 channelId)
 void RawIDA::PrepareInterpolation()
 {
 	CRYPTOPP_ASSERT(m_inputChannelIds.size() == size_t(m_threshold));
-	PrepareBulkPolynomialInterpolation(field, m_w.begin(), &(m_inputChannelIds[0]), (unsigned int)(m_threshold));
+	PrepareBulkPolynomialInterpolation(m_gf32, m_w.begin(), &(m_inputChannelIds[0]), (unsigned int)(m_threshold));
 	for (unsigned int i=0; i<m_outputChannelIds.size(); i++)
 		ComputeV(i);
 }
@@ -190,12 +185,12 @@ void RawIDA::ProcessInputQueues()
 			if (m_outputToInput[i] != size_t(m_threshold))
 				m_outputQueues[i].PutWord32(m_y[m_outputToInput[i]]);
 			else if (m_v[i].size() == size_t(m_threshold))
-				m_outputQueues[i].PutWord32(BulkPolynomialInterpolateAt(field, m_y.begin(), m_v[i].begin(), m_threshold));
+				m_outputQueues[i].PutWord32(BulkPolynomialInterpolateAt(m_gf32, m_y.begin(), m_v[i].begin(), m_threshold));
 			else
 			{
 				m_u.resize(m_threshold);
-				PrepareBulkPolynomialInterpolationAt(field, m_u.begin(), m_outputChannelIds[i], &(m_inputChannelIds[0]), m_w.begin(), m_threshold);
-				m_outputQueues[i].PutWord32(BulkPolynomialInterpolateAt(field, m_y.begin(), m_u.begin(), m_threshold));
+				PrepareBulkPolynomialInterpolationAt(m_gf32, m_u.begin(), m_outputChannelIds[i], &(m_inputChannelIds[0]), m_w.begin(), m_threshold);
+				m_outputQueues[i].PutWord32(BulkPolynomialInterpolateAt(m_gf32, m_y.begin(), m_u.begin(), m_threshold));
 			}
 		}
 	}
@@ -389,7 +384,7 @@ size_t PaddingRemover::Put2(const byte *begin, size_t length, int messageEnd, bo
 
 	if (m_possiblePadding)
 	{
-		size_t len = std::find_if(begin, end, std::bind2nd(std::not_equal_to<byte>(), byte(0))) - begin;
+		size_t len = FindIfNot(begin, end, byte(0)) - begin;
 		m_zeroCount += len;
 		begin += len;
 		if (begin == end)
@@ -402,7 +397,7 @@ size_t PaddingRemover::Put2(const byte *begin, size_t length, int messageEnd, bo
 		m_possiblePadding = false;
 	}
 
-	const byte *x = std::find_if(RevIt(end), RevIt(begin), std::bind2nd(std::not_equal_to<byte>(), byte(0))).base();
+	const byte *x = FindIfNot(RevIt(end), RevIt(begin), byte(0)).base();
 	if (x != begin && *(x-1) == 1)
 	{
 		AttachedTransformation()->Put(begin, x-begin-1);

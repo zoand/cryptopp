@@ -1,5 +1,6 @@
 // regtest2.cpp - originally written and placed in the public domain by Wei Dai
-//                regtest.cpp split into 3 files due to OOM kills by JW in April 2017
+//                regtest.cpp split into 3 files due to OOM kills by JW
+//                in April 2017. A second split occured in July 2018.
 
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 
@@ -8,53 +9,40 @@
 #include "bench.h"
 #include "cpu.h"
 
-#include "modes.h"
-#include "seal.h"
-#include "ttmac.h"
-#include "aria.h"
-#include "camellia.h"
-#include "shacal2.h"
-#include "tea.h"
-#include "aes.h"
-#include "salsa.h"
-#include "chacha.h"
-#include "vmac.h"
-#include "tiger.h"
-#include "sosemanuk.h"
-#include "arc4.h"
-#include "ccm.h"
-#include "gcm.h"
-#include "eax.h"
-#include "twofish.h"
-#include "serpent.h"
-#include "cast.h"
-#include "rc6.h"
-#include "mars.h"
-#include "kalyna.h"
-#include "threefish.h"
-#include "des.h"
-#include "idea.h"
-#include "rc5.h"
-#include "tea.h"
-#include "skipjack.h"
+// For MAC's
+#include "hmac.h"
 #include "cmac.h"
 #include "dmac.h"
-#include "blowfish.h"
-#include "seed.h"
-#include "wake.h"
-#include "hkdf.h"
+#include "vmac.h"
+#include "ttmac.h"
 
-// For HMAC's
+// Ciphers
 #include "md5.h"
 #include "keccak.h"
 #include "sha.h"
 #include "sha3.h"
 #include "blake2.h"
 #include "ripemd.h"
+#include "chacha.h"
 #include "poly1305.h"
 #include "siphash.h"
-#include "whrlpool.h"
 #include "panama.h"
+
+// Stream ciphers
+#include "arc4.h"
+#include "seal.h"
+#include "wake.h"
+#include "chacha.h"
+#include "salsa.h"
+#include "rabbit.h"
+#include "hc128.h"
+#include "hc256.h"
+#include "panama.h"
+#include "sosemanuk.h"
+
+// Block for CMAC
+#include "aes.h"
+#include "des.h"
 
 // Aggressive stack checking with VS2005 SP1 and above.
 #if (_MSC_FULL_VER >= 140050727)
@@ -67,12 +55,12 @@
 
 USING_NAMESPACE(CryptoPP)
 
-// Shared key ciphers
+// MAC ciphers
 void RegisterFactories2()
 {
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<Weak::MD5> >();
-	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<SHA1> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<RIPEMD160> >();
+	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<SHA1> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<SHA224> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<SHA256> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, HMAC<SHA384> >();
@@ -85,69 +73,33 @@ void RegisterFactories2()
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, CMAC<AES> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, DMAC<AES> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, Poly1305<AES> >();
+	RegisterDefaultFactoryFor<MessageAuthenticationCode, Poly1305TLS>();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, CMAC<DES_EDE3> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, BLAKE2s>();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, BLAKE2b>();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, SipHash<2,4> >();
 	RegisterDefaultFactoryFor<MessageAuthenticationCode, SipHash<4,8> >();
+}
 
-	RegisterSymmetricCipherDefaultFactories<SEAL<> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SHACAL2> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<ARIA> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<Camellia> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<TEA> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<XTEA> >();
-	RegisterSymmetricCipherDefaultFactories<PanamaCipher<LittleEndian> >();
-	RegisterSymmetricCipherDefaultFactories<PanamaCipher<BigEndian> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<AES> >();
-	RegisterSymmetricCipherDefaultFactories<CBC_Mode<AES> >();
-	RegisterSymmetricCipherDefaultFactories<CFB_Mode<AES> >();
-	RegisterSymmetricCipherDefaultFactories<OFB_Mode<AES> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<AES> >();
-	RegisterSymmetricCipherDefaultFactories<Salsa20>();
-	RegisterSymmetricCipherDefaultFactories<XSalsa20>();
-	RegisterSymmetricCipherDefaultFactories<ChaCha8>();
-	RegisterSymmetricCipherDefaultFactories<ChaCha12>();
-	RegisterSymmetricCipherDefaultFactories<ChaCha20>();
-	RegisterSymmetricCipherDefaultFactories<Sosemanuk>();
+// Stream ciphers
+void RegisterFactories3()
+{
 	RegisterSymmetricCipherDefaultFactories<Weak::MARC4>();
+	RegisterSymmetricCipherDefaultFactories<SEAL<> >();
+	RegisterSymmetricCipherDefaultFactories<SEAL<LittleEndian> >();
 	RegisterSymmetricCipherDefaultFactories<WAKE_OFB<LittleEndian> >();
 	RegisterSymmetricCipherDefaultFactories<WAKE_OFB<BigEndian> >();
-	RegisterSymmetricCipherDefaultFactories<SEAL<LittleEndian> >();
-	RegisterAuthenticatedSymmetricCipherDefaultFactories<CCM<AES> >();
-	RegisterAuthenticatedSymmetricCipherDefaultFactories<GCM<AES> >();
-	RegisterAuthenticatedSymmetricCipherDefaultFactories<EAX<AES> >();
-	RegisterSymmetricCipherDefaultFactories<CBC_Mode<ARIA> >();  // For test vectors
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<ARIA> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Camellia> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Twofish> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Serpent> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<CAST256> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<RC6> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<MARS> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<MARS> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SHACAL2> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<DES> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<DES_XEX3> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<DES_EDE3> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<IDEA> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<RC5> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<TEA> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<XTEA> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<CAST128> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SKIPJACK> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Blowfish> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SEED> >();
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SEED> >();
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<Kalyna> >();  // Test Vectors
-	RegisterSymmetricCipherDefaultFactories<CBC_Mode<Kalyna> >();  // Test Vectors
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Kalyna> >();  // Benchmarks
-	RegisterSymmetricCipherDefaultFactories<ECB_Mode<Threefish> >();  // Test Vectors
-	RegisterSymmetricCipherDefaultFactories<CBC_Mode<Threefish> >();  // Test Vectors
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Threefish> >();  // Benchmarks
+	RegisterSymmetricCipherDefaultFactories<PanamaCipher<LittleEndian> >();
+	RegisterSymmetricCipherDefaultFactories<PanamaCipher<BigEndian> >();
 
-	RegisterDefaultFactoryFor<KeyDerivationFunction, HKDF<SHA1> >();
-	RegisterDefaultFactoryFor<KeyDerivationFunction, HKDF<SHA256> >();
-	RegisterDefaultFactoryFor<KeyDerivationFunction, HKDF<SHA512> >();
-	RegisterDefaultFactoryFor<KeyDerivationFunction, HKDF<Whirlpool> >();
+	RegisterSymmetricCipherDefaultFactories<Salsa20>();
+	RegisterSymmetricCipherDefaultFactories<XSalsa20>();
+	RegisterSymmetricCipherDefaultFactories<ChaCha>();
+	RegisterSymmetricCipherDefaultFactories<ChaChaTLS>();
+	RegisterSymmetricCipherDefaultFactories<XChaCha20>();
+	RegisterSymmetricCipherDefaultFactories<Sosemanuk>();
+	RegisterSymmetricCipherDefaultFactories<Rabbit>();
+	RegisterSymmetricCipherDefaultFactories<RabbitWithIV>();
+	RegisterSymmetricCipherDefaultFactories<HC128>();
+	RegisterSymmetricCipherDefaultFactories<HC256>();
 }

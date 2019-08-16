@@ -10,6 +10,7 @@
 #include "cryptlib.h"
 #include "filters.h"
 #include "smartptr.h"
+#include "pkcspad.h"
 #include "misc.h"
 
 // Simply disable CRYPTOPP_WIN32_AVAILABLE for Windows Phone and Windows Store apps
@@ -29,18 +30,18 @@
 #include <windows.h>
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400
-#ifdef _M_IX86
-#define _CRT_DEBUGGER_HOOK _crt_debugger_hook
-#else
-#define _CRT_DEBUGGER_HOOK __crt_debugger_hook
-#endif
-#if _MSC_VER < 1900
+# ifdef _M_IX86
+#  define _CRT_DEBUGGER_HOOK _crt_debugger_hook
+# else
+#  define _CRT_DEBUGGER_HOOK __crt_debugger_hook
+# endif
+# if _MSC_VER < 1900
 extern "C" {_CRTIMP void __cdecl _CRT_DEBUGGER_HOOK(int);}
-#else
+# else
 extern "C" {void __cdecl _CRT_DEBUGGER_HOOK(int); }
+# endif
 #endif
-#endif
-#endif
+#endif  // CRYPTOPP_WIN32_AVAILABLE
 
 #include <sstream>
 #include <iostream>
@@ -327,22 +328,22 @@ bool IntegrityCheckModule(const char *moduleFilename, const byte *expectedModule
 	if (h == g_BaseAddressOfMAC)
 	{
 		std::ostringstream oss;
-		oss << "Crypto++ DLL loaded at base address 0x" << std::hex << h << ".\n";
-		OutputDebugString(oss.str().c_str());
+		oss << "Crypto++ DLL loaded at base address " << std::hex << h << ".\n";
+		OutputDebugStringA(oss.str().c_str());
 	}
 	else
 	{
 		std::ostringstream oss;
-		oss << "Crypto++ DLL integrity check may fail. Expected module base address is 0x";
-		oss << std::hex << g_BaseAddressOfMAC << ", but module loaded at 0x" << h << ".\n";
-		OutputDebugString(oss.str().c_str());
+		oss << "Crypto++ DLL integrity check may fail. Expected module base address is ";
+		oss << std::hex << g_BaseAddressOfMAC << ", but module loaded at " << h << ".\n";
+		OutputDebugStringA(oss.str().c_str());
 	}
 #endif
 
 	if (!moduleStream)
 	{
 #ifdef CRYPTOPP_WIN32_AVAILABLE
-		OutputDebugString("Crypto++ DLL integrity check failed. Cannot open file for reading.");
+		OutputDebugStringA("Crypto++ DLL integrity check failed. Cannot open file for reading.");
 #endif
 		return false;
 	}
@@ -400,7 +401,7 @@ bool IntegrityCheckModule(const char *moduleFilename, const byte *expectedModule
 					}
 				}
 
-#if defined(_MSC_VER) && _MSC_VER >= 1400
+#if defined(_MSC_VER) && _MSC_VER >= 1400 && !(defined(_M_ARM) || defined(_M_ARM64))
 				// first byte of _CRT_DEBUGGER_HOOK gets modified in memory by the debugger invisibly, so read it from file
 				if (IsDebuggerPresent())
 				{
@@ -436,7 +437,7 @@ bool IntegrityCheckModule(const char *moduleFilename, const byte *expectedModule
 	// hash from disk instead
 	if (!VerifyBufsEqual(expectedModuleMac, actualMac, macSize))
 	{
-		OutputDebugString("Crypto++ DLL in-memory integrity check failed. This may be caused by debug breakpoints or DLL relocation.\n");
+		OutputDebugStringA("Crypto++ DLL in-memory integrity check failed. This may be caused by debug breakpoints or DLL relocation.\n");
 		moduleStream.clear();
 		moduleStream.seekg(0);
 		verifier.Initialize(MakeParameters(Name::OutputBuffer(), ByteArrayParameter(actualMac, (unsigned int)actualMac.size())));
@@ -455,7 +456,7 @@ bool IntegrityCheckModule(const char *moduleFilename, const byte *expectedModule
 #ifdef CRYPTOPP_WIN32_AVAILABLE
 	std::string hexMac;
 	HexEncoder(new StringSink(hexMac)).PutMessageEnd(actualMac, actualMac.size());
-	OutputDebugString((("Crypto++ DLL integrity check failed. Actual MAC is: " + hexMac) + ".\n").c_str());
+	OutputDebugStringA((("Crypto++ DLL integrity check failed. Actual MAC is: " + hexMac) + ".\n").c_str());
 #endif
 	return false;
 }

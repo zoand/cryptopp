@@ -65,9 +65,14 @@ static void Mash(const byte *in, size_t inLen, byte *out, size_t outLen, int ite
 template <class BC, class H, class Info>
 static void GenerateKeyIV(const byte *passphrase, size_t passphraseLength, const byte *salt, size_t saltLength, unsigned int iterations, byte *key, byte *IV)
 {
+	// UBsan. User supplied params, may be NULL
 	SecByteBlock temp(passphraseLength+saltLength);
-	memcpy(temp, passphrase, passphraseLength);
-	memcpy(temp+passphraseLength, salt, saltLength);
+	if (passphrase != NULLPTR)
+		memcpy(temp, passphrase, passphraseLength);
+	if (salt != NULLPTR)
+		memcpy(temp+passphraseLength, salt, saltLength);
+
+	// OK. Derived params, cannot be NULL
 	SecByteBlock keyIV(Info::KEYLENGTH+Info::BLOCKSIZE);
 	Mash<H>(temp, passphraseLength + saltLength, keyIV, Info::KEYLENGTH+Info::BLOCKSIZE, iterations);
 	memcpy(key, keyIV, Info::KEYLENGTH);
@@ -80,16 +85,16 @@ template <class BC, class H, class Info>
 DataEncryptor<BC,H,Info>::DataEncryptor(const char *passphrase, BufferedTransformation *attachment)
 	: ProxyFilter(NULLPTR, 0, 0, attachment), m_passphrase((const byte *)passphrase, strlen(passphrase))
 {
-	CRYPTOPP_COMPILE_ASSERT(SALTLENGTH <= DIGESTSIZE);
-	CRYPTOPP_COMPILE_ASSERT(BLOCKSIZE <= DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)SALTLENGTH <= DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)BLOCKSIZE <= (int)DIGESTSIZE);
 }
 
 template <class BC, class H, class Info>
 DataEncryptor<BC,H,Info>::DataEncryptor(const byte *passphrase, size_t passphraseLength, BufferedTransformation *attachment)
 	: ProxyFilter(NULLPTR, 0, 0, attachment), m_passphrase(passphrase, passphraseLength)
 {
-	CRYPTOPP_COMPILE_ASSERT(SALTLENGTH <= DIGESTSIZE);
-	CRYPTOPP_COMPILE_ASSERT(BLOCKSIZE <= DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)SALTLENGTH <= (int)DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)BLOCKSIZE <= (int)DIGESTSIZE);
 }
 
 template <class BC, class H, class Info>
@@ -140,8 +145,8 @@ DataDecryptor<BC,H,Info>::DataDecryptor(const char *p, BufferedTransformation *a
 	, m_passphrase((const byte *)p, strlen(p))
 	, m_throwException(throwException)
 {
-	CRYPTOPP_COMPILE_ASSERT(SALTLENGTH <= DIGESTSIZE);
-	CRYPTOPP_COMPILE_ASSERT(BLOCKSIZE <= DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)SALTLENGTH <= (int)DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)BLOCKSIZE <= (int)DIGESTSIZE);
 }
 
 template <class BC, class H, class Info>
@@ -151,8 +156,8 @@ DataDecryptor<BC,H,Info>::DataDecryptor(const byte *passphrase, size_t passphras
 	, m_passphrase(passphrase, passphraseLength)
 	, m_throwException(throwException)
 {
-	CRYPTOPP_COMPILE_ASSERT(SALTLENGTH <= DIGESTSIZE);
-	CRYPTOPP_COMPILE_ASSERT(BLOCKSIZE <= DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)SALTLENGTH <= (int)DIGESTSIZE);
+	CRYPTOPP_COMPILE_ASSERT((int)BLOCKSIZE <= (int)DIGESTSIZE);
 }
 
 template <class BC, class H, class Info>
@@ -294,8 +299,8 @@ template class DataEncryptor<LegacyBlockCipher,LegacyHashModule,LegacyParameters
 template class DataDecryptor<LegacyBlockCipher,LegacyHashModule,LegacyParametersInfo>;
 template class DataEncryptor<DefaultBlockCipher,DefaultHashModule,DefaultParametersInfo>;
 template class DataDecryptor<DefaultBlockCipher,DefaultHashModule,DefaultParametersInfo>;
-template class DataEncryptorWithMAC<LegacyBlockCipher,LegacyHashModule,DefaultMAC,LegacyParametersInfo>;
-template class DataDecryptorWithMAC<LegacyBlockCipher,LegacyHashModule,DefaultMAC,LegacyParametersInfo>;
+template class DataEncryptorWithMAC<LegacyBlockCipher,LegacyHashModule,LegacyMAC,LegacyParametersInfo>;
+template class DataDecryptorWithMAC<LegacyBlockCipher,LegacyHashModule,LegacyMAC,LegacyParametersInfo>;
 template class DataEncryptorWithMAC<DefaultBlockCipher,DefaultHashModule,DefaultMAC,DefaultParametersInfo>;
 template class DataDecryptorWithMAC<DefaultBlockCipher,DefaultHashModule,DefaultMAC,DefaultParametersInfo>;
 

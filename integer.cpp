@@ -1,54 +1,59 @@
 // integer.cpp - originally written and placed in the public domain by Wei Dai
 // contains public domain code contributed by Alister Lee and Leonard Janke
 
-// Notes by JW: The Integer class needs to do two things. First, it needs to set function
-//  pointers on some platforms, like X86 and X64. The function pointers select a fast multiply
-//  and addition based on the cpu. Second, it wants to create Integer::Zero(), Integer::One()
-//  and Integer::Two(). The function pointers are initialized in the class InitializeInteger.
-// Wei's original code was much simpler. It uses the Singleton pattern, but it always produced
-//  memory findings. The Singleton generates memory findings because it used for a Create on
-//  First Use pattern. Resource destruction effectivley requires running resource acquisition
-//  with dependencies in reverse. For resources provided through the Singletons, there is no way
-//  to express the dependency order to safely destroy resources.
-// The difference in the changes below is we use platform and language specific remediations
-//  if they are available. If not available, then we fall back to Wei's original code. If
-//  NO_OS_DEPENDENCE is defined, then the library uses Wei's original code.
-// Under all versions of C++ on Linux and Microsoft platforms, we can use GCC's init_priority
-//  or MSVC's init_seg(lib) to initialize the function pointers and create the Integers 0, 1 and 2
-//  after CRT startup. This avoids the Singletons and clears over half the reports of memory
-//  leaks. However, it does not apply to Apple or Sun platforms.
-// C++11 allows us to use call_once to set the function pointers, and Integer does so when
-//  init_priority and init_seg(lib) are not available. The class also uses the Singleton pattern
-//  to ensure integers 0, 1 and 2 are available. The Singleton will produce memory findings, but
-//  we don't have anything else to use in this case.
-// C++03 on platforms like Apple and Sun, we use a boolean flag to track when the function pointers
-//  have been set based on the cpu. Its just a Nifty Counter in disguise, and its similar to using
-//  the g_pAssignToInteger to track initialization. It has concurrency issues, but a race is not a
-//  problem. It does not matter if two threads both set the same pointers. The Singleton pattern
-//  is also used to ensure integers 0, 1 and 2 are available. The Singleton will produce memory
-//  findings, but we don't have anything else to use in this case.
-// While not readily apparent, Integer does not need to inherit from InitializeInteger when
-//  init_priority and init_seg(lib) are available. They just create an InitializePointers object
-//  at the right time after CRT initialization. The additional class avoids the small runtime
-//  overhead associated with checking the flags, and hides the detail from the interface.
+// Notes by JW: The Integer class needs to do two things. First, it needs
+//  to set function pointers on some platforms, like X86 and X64. The
+//  function pointers select a fast multiply and addition based on the cpu.
+//  Second, it wants to create Integer::Zero(), Integer::One() and
+//  Integer::Two().
+// The function pointers are initialized in the InitializeInteger class by
+//  calling SetFunctionPointers(). The call to SetFunctionPointers() is
+//  guarded to run once using a double-checked pattern. We don't use C++
+//  std::call_once due to bad interactions between libstdc++, glibc and
+//  pthreads. The bad interactions were causing crashes for us on platforms
+//  like Sparc and PowerPC. Since we are only setting function pointers we
+//  don't have to worry about leaking memory. The worst case seems to be the
+//  pointers gets written twice until the init flag is set and visible to
+//  all threads.
+// For Integer::Zero(), Integer::One() and Integer::Two(), we use one of three
+//  strategies. First, if initialization priorities are available then we use
+//  them. Initialization priorities are init_priority() on Linux and init_seg()
+//  on Windows. OS X and several other platforms lack them. Initialization
+//  priorities are platform specific but they are also the most trouble free
+//  with determisitic destruction.
+// Second, if C++11 dynamic initialization is available, then we use it. After
+//  the std::call_once fiasco we moved to dynamic initialization to avoid
+//  unknown troubles platforms that are tested less frequently. In addition
+//  Microsoft platforms mostly do not provide dynamic initialization.
+//  The MSDN docs claim they do but they don't in practice because we need
+//  Visual Studio 2017 and Windows 10 or above.
+// Third, we fall back to Wei's original code of a Singleton. Wei's original
+//  code was much simpler. It simply used the Singleton pattern, but it always
+//  produced memory findings on some platforms. The Singleton generates memory
+//  findings because it uses a Create On First Use pattern (a dumb Nifty
+//  Counter) and the compiler had to be smart enough to fold them to return
+//  the same object. Unix and Linux compilers do a good job of folding objects,
+//  but Microsoft compilers do a rather poor job for some versions of the
+//  compiler.
+// Another problem with the Singleton is resource destruction requires running
+//  resource acquisition in reverse. For resources provided through the
+//  Singletons, there is no way to express the dependency order to safely
+//  destroy resources. (That's one of the problems C++11 dynamic
+//  intitialization with concurrent execution is supposed to solve).
+// The final problem with Singletons is resource/memory exhaustion in languages
+//  like Java and .Net. Java and .Net load and unload a native DLL hundreds or
+//  thousands of times during the life of a program. Each load produces a
+//  memory leak and they can add up quickly. If they library is being used in
+//  Java or .Net then Singleton must be avoided at all costs.
+//
+// The code below has a path cut-in for BMI2 using mulx and adcx instructions.
+//  There was a modest speedup of approximately 0.03 ms in public key Integer
+//  operations. We had to disable BMI2 for the moment because some OS X machines
+//  were advertising BMI/BMI2 support but caused SIGILL's at runtime. Also see
+//  https://github.com/weidai11/cryptopp/issues/850.
 
 #include "pch.h"
 #include "config.h"
-
-#if CRYPTOPP_MSC_VERSION
-# pragma warning(disable: 4100)
-#endif
-
-#if CRYPTOPP_GCC_DIAGNOSTIC_AVAILABLE
-# pragma GCC diagnostic ignored "-Wunused"
-# pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#endif
-
-// Issue 340
-#if CRYPTOPP_GCC_DIAGNOSTIC_AVAILABLE
-# pragma GCC diagnostic ignored "-Wconversion"
-# pragma GCC diagnostic ignored "-Wsign-conversion"
-#endif
 
 #ifndef CRYPTOPP_IMPORTS
 
@@ -78,7 +83,8 @@
 	#include <c_asm.h>
 #endif
 
-// "Error: The operand ___LKDB cannot be assigned to", http://github.com/weidai11/cryptopp/issues/188
+// "Error: The operand ___LKDB cannot be assigned to",
+// http://github.com/weidai11/cryptopp/issues/188
 #if (__SUNPRO_CC >= 0x5130)
 # define MAYBE_CONST
 # define MAYBE_UNCONST_CAST(x) const_cast<word*>(x)
@@ -88,48 +94,33 @@
 #endif
 
 // "Inline assembly operands don't work with .intel_syntax",
-//   http://llvm.org/bugs/show_bug.cgi?id=24232
-#if CRYPTOPP_BOOL_X32 || defined(CRYPTOPP_DISABLE_INTEL_ASM)
+//  http://llvm.org/bugs/show_bug.cgi?id=24232
+#if CRYPTOPP_BOOL_X32 || defined(CRYPTOPP_DISABLE_MIXED_ASM)
 # undef CRYPTOPP_X86_ASM_AVAILABLE
 # undef CRYPTOPP_X32_ASM_AVAILABLE
 # undef CRYPTOPP_X64_ASM_AVAILABLE
-# undef CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE
-# undef CRYPTOPP_BOOL_SSSE3_ASM_AVAILABLE
-# define CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE 0
-# define CRYPTOPP_BOOL_SSSE3_ASM_AVAILABLE 0
+# undef CRYPTOPP_SSE2_ASM_AVAILABLE
+# undef CRYPTOPP_SSSE3_ASM_AVAILABLE
 #else
-# define CRYPTOPP_INTEGER_SSE2 (CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86))
+# define CRYPTOPP_INTEGER_SSE2 (CRYPTOPP_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86))
 #endif
 
 // ***************** C++ Static Initialization ********************
 
 NAMESPACE_BEGIN(CryptoPP)
+
+// Function body near the middle of the file
 static void SetFunctionPointers();
-#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY)
-// Add InitializePointers to perform the work of setting pointers once.
-struct InitializePointers
-{
-	InitializePointers()
-	{
-		SetFunctionPointers();
-	}
-};
-// Leave InitializeInteger empty so no work is done.
+
+// Use a double-checked pattern. We are not leaking anything so it
+// does not matter if a pointer is written twice during a race.
+// Avoid std::call_once due to too many problems on platforms like
+// Solaris and Sparc. Also see
+// http://gcc.gnu.org/bugzilla/show_bug.cgi?id=66146 and
+// http://github.com/weidai11/cryptopp/issues/707.
 InitializeInteger::InitializeInteger()
 {
-}
-#elif defined(CRYPTOPP_CXX11_SYNCHRONIZATION) && defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
-std::once_flag s_flag;
-InitializeInteger::InitializeInteger()
-{
-	std::call_once(s_flag, []() {
-		SetFunctionPointers();
-	});
-}
-#else
-static bool s_flag;
-InitializeInteger::InitializeInteger()
-{
+	static bool s_flag;
 	MEMORY_BARRIER();
 	if (s_flag == false)
 	{
@@ -138,7 +129,7 @@ InitializeInteger::InitializeInteger()
 		MEMORY_BARRIER();
 	}
 }
-#endif
+
 template <long i>
 struct NewInteger
 {
@@ -147,28 +138,9 @@ struct NewInteger
 		return new Integer(i);
 	}
 };
-NAMESPACE_END
-
-ANONYMOUS_NAMESPACE_BEGIN
-#if defined(HAVE_GCC_INIT_PRIORITY)
-const CryptoPP::InitializePointers s_init __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 30))) = CryptoPP::InitializePointers();
-const CryptoPP::Integer s_zero __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 31))) = CryptoPP::Integer(0L);
-const CryptoPP::Integer  s_one __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 32))) = CryptoPP::Integer(1L);
-const CryptoPP::Integer  s_two __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 33))) = CryptoPP::Integer(2L);
-#elif defined(HAVE_MSC_INIT_PRIORITY)
-#pragma warning(disable: 4075)
-#pragma init_seg(".CRT$XCU-030")
-const CryptoPP::InitializePointers s_init;
-const CryptoPP::Integer s_zero(0L);
-const CryptoPP::Integer  s_one(1L);
-const CryptoPP::Integer  s_two(2L);
-#pragma warning(default: 4075)
-#endif
-ANONYMOUS_NAMESPACE_END
 
 // ***************** Library code ********************
 
-NAMESPACE_BEGIN(CryptoPP)
 inline static int Compare(const word *A, const word *B, size_t N)
 {
 	while (N--)
@@ -229,6 +201,7 @@ static word AtomicInverseModPower2(word A)
 // ********************************************************
 
 #if !defined(CRYPTOPP_NATIVE_DWORD_AVAILABLE) || (defined(__x86_64__) && defined(CRYPTOPP_WORD128_AVAILABLE))
+	#define TWO_64_BIT_WORDS 1
 	#define Declare2Words(x)			word x##0, x##1;
 	#define AssignWord(a, b)			a##0 = b; a##1 = 0;
 	#define Add2WordsBy1(a, b, c)		a##0 = b##0 + c; a##1 = b##1 + (a##0 < c);
@@ -245,6 +218,13 @@ static word AtomicInverseModPower2(word A)
 		#if defined(__SUNPRO_CC) && __SUNPRO_CC < 0x5100
 			// Sun Studio's gcc-style inline assembly is heavily bugged as of version 5.9 Patch 124864-09 2008/12/16, but this one works
 			#define MultiplyWordsLoHi(p0, p1, a, b)		asm ("mulq %3" : "=a"(p0), "=d"(p1) : "a"(a), "r"(b) : "cc");
+		#elif defined(__BMI2__) && 0
+			#define MultiplyWordsLoHi(p0, p1, a, b)		asm ("mulxq %3, %0, %1" : "=r"(p0), "=r"(p1) : "d"(a), "r"(b));
+			#define MulAcc(c, d, a, b)		asm ("mulxq %6, %3, %4; addq %3, %0; adcxq %4, %1; adcxq %7, %2;" : "+&r"(c), "+&r"(d##0), "+&r"(d##1), "=&r"(p0), "=&r"(p1) : "d"(a), "r"(b), "r"(W64LIT(0)) : "cc");
+			#define Double3Words(c, d)		asm ("addq %0, %0; adcxq %1, %1; adcxq %2, %2;" : "+r"(c), "+r"(d##0), "+r"(d##1) : : "cc");
+			#define Acc2WordsBy1(a, b)		asm ("addq %2, %0; adcxq %3, %1;" : "+&r"(a##0), "+r"(a##1) : "r"(b), "r"(W64LIT(0)) : "cc");
+			#define Acc2WordsBy2(a, b)		asm ("addq %2, %0; adcxq %3, %1;" : "+r"(a##0), "+r"(a##1) : "r"(b##0), "r"(b##1) : "cc");
+			#define Acc3WordsBy2(c, d, e)	asm ("addq %5, %0; adcxq %6, %1; adcxq %7, %2;" : "+r"(c), "=&r"(e##0), "=&r"(e##1) : "1"(d##0), "2"(d##1), "r"(e##0), "r"(e##1), "r"(W64LIT(0)) : "cc");
 		#else
 			#define MultiplyWordsLoHi(p0, p1, a, b)		asm ("mulq %3" : "=a"(p0), "=d"(p1) : "a"(a), "g"(b) : "cc");
 			#define MulAcc(c, d, a, b)		asm ("mulq %6; addq %3, %0; adcq %4, %1; adcq $0, %2;" : "+r"(c), "+r"(d##0), "+r"(d##1), "=a"(p0), "=d"(p1) : "a"(a), "g"(b) : "cc");
@@ -267,7 +247,7 @@ static word AtomicInverseModPower2(word A)
 	#define GetBorrow(u)				u##1
 #else
 	#define Declare2Words(x)			dword x;
-	#if _MSC_VER >= 1400 && !defined(__INTEL_COMPILER) && !defined(_M_ARM)
+	#if _MSC_VER >= 1400 && !defined(__INTEL_COMPILER) && (defined(_M_IX86) || defined(_M_X64) || defined(_M_IA64))
 		#define MultiplyWords(p, a, b)		p = __emulu(a, b);
 	#else
 		#define MultiplyWords(p, a, b)		p = (dword)a*b;
@@ -297,16 +277,17 @@ class DWord
 {
 public:
 #if defined(CRYPTOPP_NATIVE_DWORD_AVAILABLE)
-	DWord() : m_whole() { }
+	DWord() {std::memset(&m_whole, 0x00, sizeof(m_whole));}
 #else
-	DWord() : m_halfs() { }
+	DWord() {std::memset(&m_halfs, 0x00, sizeof(m_halfs));}
 #endif
 
 #ifdef CRYPTOPP_NATIVE_DWORD_AVAILABLE
 	explicit DWord(word low) : m_whole(low) { }
 #else
-	explicit DWord(word low) : m_halfs()
+	explicit DWord(word low)
 	{
+		m_halfs.high = 0;
 		m_halfs.low = low;
 	}
 #endif
@@ -318,12 +299,12 @@ public:
 #endif
 	{
 #if defined(CRYPTOPP_NATIVE_DWORD_AVAILABLE)
-#  if defined(IS_LITTLE_ENDIAN)
+#  if (CRYPTOPP_LITTLE_ENDIAN)
 		const word t[2] = {low,high};
-		memcpy(&m_whole, &t, sizeof(m_whole));
+		memcpy(&m_whole, t, sizeof(m_whole));
 #  else
 		const word t[2] = {high,low};
-		memcpy(&m_whole, &t, sizeof(m_whole));
+		memcpy(&m_whole, t, sizeof(m_whole));
 #  endif
 #else
 		m_halfs.low = low;
@@ -423,7 +404,7 @@ private:
 	//   Thanks to Martin Bonner at http://stackoverflow.com/a/39507183
     struct half_words
     {
-    #ifdef IS_LITTLE_ENDIAN
+    #if (CRYPTOPP_LITTLE_ENDIAN)
         word low;
         word high;
     #else
@@ -536,8 +517,9 @@ S DivideThreeWordsByTwo(S *A, S B0, S B1, D *dummy=NULLPTR)
 template <class S, class D>
 inline D DivideFourWordsByTwo(S *T, const D &Al, const D &Ah, const D &B)
 {
-	// Profiling tells us the original second case was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original second case was dominant, so it was
+	// promoted to the first If statement. The code change occurred at
+	// Commit dc99266599a0e72d.
 
 	if (!!B)
 	{
@@ -777,6 +759,10 @@ CRYPTOPP_NAKED int CRYPTOPP_FASTCALL Baseline_Add(size_t N, word *C, const word 
 	AS1(	setc	al)					// store carry into eax (return result register)
 
 	AddEpilogue
+
+	// http://github.com/weidai11/cryptopp/issues/340
+	CRYPTOPP_UNUSED(A); CRYPTOPP_UNUSED(B);
+	CRYPTOPP_UNUSED(C); CRYPTOPP_UNUSED(N);
 }
 
 CRYPTOPP_NAKED int CRYPTOPP_FASTCALL Baseline_Sub(size_t N, word *C, const word *A, const word *B)
@@ -818,6 +804,10 @@ CRYPTOPP_NAKED int CRYPTOPP_FASTCALL Baseline_Sub(size_t N, word *C, const word 
 	AS1(	setc	al)					// store carry into eax (return result register)
 
 	AddEpilogue
+
+	// http://github.com/weidai11/cryptopp/issues/340
+	CRYPTOPP_UNUSED(A); CRYPTOPP_UNUSED(B);
+	CRYPTOPP_UNUSED(C); CRYPTOPP_UNUSED(N);
 }
 
 #if CRYPTOPP_INTEGER_SSE2
@@ -876,6 +866,10 @@ CRYPTOPP_NAKED int CRYPTOPP_FASTCALL SSE2_Add(size_t N, word *C, const word *A, 
 	AS1(	emms)
 
 	AddEpilogue
+
+	// http://github.com/weidai11/cryptopp/issues/340
+	CRYPTOPP_UNUSED(A); CRYPTOPP_UNUSED(B);
+	CRYPTOPP_UNUSED(C); CRYPTOPP_UNUSED(N);
 }
 CRYPTOPP_NAKED int CRYPTOPP_FASTCALL SSE2_Sub(size_t N, word *C, const word *A, const word *B)
 {
@@ -932,9 +926,13 @@ CRYPTOPP_NAKED int CRYPTOPP_FASTCALL SSE2_Sub(size_t N, word *C, const word *A, 
 	AS1(	emms)
 
 	AddEpilogue
+
+	// http://github.com/weidai11/cryptopp/issues/340
+	CRYPTOPP_UNUSED(A); CRYPTOPP_UNUSED(B);
+	CRYPTOPP_UNUSED(C); CRYPTOPP_UNUSED(N);
 }
 #endif	// CRYPTOPP_INTEGER_SSE2
-#else   // CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE
+#else   // CRYPTOPP_SSE2_ASM_AVAILABLE
 int CRYPTOPP_FASTCALL Baseline_Add(size_t N, word *C, const word *A, const word *B)
 {
 	CRYPTOPP_ASSERT (N%2 == 0);
@@ -1328,6 +1326,11 @@ void Baseline_MultiplyBottom2(word *R, const word *AA, const word *BB)
 	MAYBE_CONST word* B = MAYBE_UNCONST_CAST(BB);
 
 	Bot_2
+
+// http://github.com/weidai11/cryptopp/issues/340
+#if defined(TWO_64_BIT_WORDS)
+	CRYPTOPP_UNUSED(d0); CRYPTOPP_UNUSED(d1);
+#endif
 }
 
 void Baseline_MultiplyBottom4(word *R, const word *AA, const word *BB)
@@ -1470,7 +1473,11 @@ void Baseline_MultiplyTop16(word *R, const word *AA, const word *BB, word L)
 
 #if CRYPTOPP_INTEGER_SSE2
 
-CRYPTOPP_ALIGN_DATA(16) static const word32 s_maskLow16[4] CRYPTOPP_SECTION_ALIGN16 = {0xffff,0xffff,0xffff,0xffff};
+CRYPTOPP_ALIGN_DATA(16)
+CRYPTOPP_TABLE
+const word32 s_maskLow16[4] = {
+	0xffff,0xffff,0xffff,0xffff
+};
 
 #undef Mul_Begin
 #undef Mul_Acc
@@ -2445,8 +2452,9 @@ void AsymmetricMultiply(word *R, word *T, const word *A, size_t NA, const word *
 
 	if (NA==2 && !A[1])
 	{
-		// Profiling tells us the original Default case was dominant, so it was promoted to the first Case statement.
-		// The code change occurred at Commit dc99266599a0e72d.
+		// Profiling tells us the original Default case was dominant, so it was
+		// promoted to the first Case statement. The code change occurred at
+		// Commit dc99266599a0e72d.
 		switch (A[0])
 		{
 		default:
@@ -2492,8 +2500,9 @@ void AsymmetricMultiply(word *R, word *T, const word *A, size_t NA, const word *
 
 void RecursiveInverseModPower2(word *R, word *T, const word *A, size_t N)
 {
-	// Profiling tells us the original Else was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original Else was dominant, so it was
+	// promoted to the first If statement. The code change occurred
+	// at Commit dc99266599a0e72d.
 	if (N!=2)
 	{
 		const size_t N2 = N/2;
@@ -3027,17 +3036,18 @@ Integer::Integer(BufferedTransformation &encodedInteger, size_t byteCount, Signe
 {
 	CRYPTOPP_ASSERT(o == BIG_ENDIAN_ORDER || o == LITTLE_ENDIAN_ORDER);
 
-	if (o == LITTLE_ENDIAN_ORDER)
+	if (o != LITTLE_ENDIAN_ORDER)
+	{
+		Decode(encodedInteger, byteCount, s);
+	}
+	else
 	{
 		SecByteBlock block(byteCount);
 		encodedInteger.Get(block, block.size());
 		std::reverse(block.begin(), block.begin()+block.size());
 
 		Decode(block.begin(), block.size(), s);
-		return;
 	}
-
-	Decode(encodedInteger, byteCount, s);
 }
 
 Integer::Integer(const byte *encodedInteger, size_t byteCount, Signedness s, ByteOrder o)
@@ -3045,10 +3055,14 @@ Integer::Integer(const byte *encodedInteger, size_t byteCount, Signedness s, Byt
 	CRYPTOPP_ASSERT(encodedInteger && byteCount); // NULL buffer
 	CRYPTOPP_ASSERT(o == BIG_ENDIAN_ORDER || o == LITTLE_ENDIAN_ORDER);
 
-	if (o == LITTLE_ENDIAN_ORDER)
+	if (o != LITTLE_ENDIAN_ORDER)
+	{
+		Decode(encodedInteger, byteCount, s);
+	}
+	else
 	{
 		SecByteBlock block(byteCount);
-#if (_MSC_FULL_VER >= 140050727)
+#if (_MSC_VER >= 1500)
 		std::reverse_copy(encodedInteger, encodedInteger+byteCount,
 			stdext::make_checked_array_iterator(block.begin(), block.size()));
 #else
@@ -3057,13 +3071,12 @@ Integer::Integer(const byte *encodedInteger, size_t byteCount, Signedness s, Byt
 		Decode(block.begin(), block.size(), s);
 		return;
 	}
-
-	Decode(encodedInteger, byteCount, s);
 }
 
 Integer::Integer(BufferedTransformation &bt)
 {
-	BERDecode(bt);
+	// Make explicit call to avoid virtual-dispatch findings in ctor
+	Integer::BERDecode(bt);
 }
 
 Integer::Integer(RandomNumberGenerator &rng, size_t bitcount)
@@ -3082,33 +3095,6 @@ Integer Integer::Power2(size_t e)
 	Integer r((word)0, BitsToWords(e+1));
 	r.SetBit(e);
 	return r;
-}
-
-const Integer &Integer::Zero()
-{
-#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY)
-	return s_zero;
-#else
-	return Singleton<Integer, NewInteger<0L> >().Ref();
-#endif
-}
-
-const Integer &Integer::One()
-{
-#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY)
-	return s_one;
-#else
-	return Singleton<Integer, NewInteger<1L> >().Ref();
-#endif
-}
-
-const Integer &Integer::Two()
-{
-#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY)
-	return s_two;
-#else
-	return Singleton<Integer, NewInteger<2L> >().Ref();
-#endif
 }
 
 bool Integer::operator!() const
@@ -3130,8 +3116,9 @@ Integer& Integer::operator=(const Integer& t)
 
 bool Integer::GetBit(size_t n) const
 {
-	// Profiling tells us the original Else was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original Else was dominant, so it was
+	// promoted to the first If statement. The code change occurred
+	// at Commit dc99266599a0e72d.
 	if (n/WORD_BITS < reg.size())
 		return bool((reg[n/WORD_BITS] >> (n % WORD_BITS)) & 1);
 	else
@@ -3154,8 +3141,9 @@ void Integer::SetBit(size_t n, bool value)
 
 byte Integer::GetByte(size_t n) const
 {
-	// Profiling tells us the original Else was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original Else was dominant, so it was
+	// promoted to the first If statement. The code change occurred
+	// at Commit dc99266599a0e72d.
 	if (n/WORD_SIZE < reg.size())
 		return byte(reg[n/WORD_SIZE] >> ((n%WORD_SIZE)*8));
 	else
@@ -3258,7 +3246,7 @@ static Integer StringToInteger(const T *str, ByteOrder order)
 		{
 			int digit, ch = static_cast<int>(str[i]);
 
-			//  Profiling showd the second and third Else needed to be swapped
+			// Profiling showd the second and third Else needed to be swapped
 			// The code change occurred at Commit dc99266599a0e72d.
 			if (ch >= '0' && ch <= '9')
 				digit = ch - '0';
@@ -3418,8 +3406,9 @@ void Integer::Decode(BufferedTransformation &bt, size_t inputLen, Signedness s)
 
 size_t Integer::MinEncodedSize(Signedness signedness) const
 {
-	// Profiling tells us the original second If was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original second If was dominant, so it
+	// was promoted to the first If statement. The code change occurred
+	// at Commit dc99266599a0e72d.
 	unsigned int outputLen = STDMAX(1U, ByteCount());
 	const bool pre = (signedness == UNSIGNED);
 	if (!pre && NotNegative() && (GetByte(outputLen-1) & 0x80))
@@ -3554,16 +3543,17 @@ void Integer::Randomize(RandomNumberGenerator &rng, const Integer &min, const In
 
 bool Integer::Randomize(RandomNumberGenerator &rng, const Integer &min, const Integer &max, RandomNumberType rnType, const Integer &equiv, const Integer &mod)
 {
-	return GenerateRandomNoThrow(rng, MakeParameters("Min", min)("Max", max)("RandomNumberType", rnType)("EquivalentTo", equiv)("Mod", mod));
+	return GenerateRandomNoThrow(rng, MakeParameters("Min", min)("Max", max)
+		("RandomNumberType", rnType)("EquivalentTo", equiv)("Mod", mod));
 }
 
 class KDF2_RNG : public RandomNumberGenerator
 {
 public:
 	KDF2_RNG(const byte *seed, size_t seedSize)
-		: m_counter(0), m_counterAndSeed(seedSize + 4)
+		: m_counter(0), m_counterAndSeed(ClampSize(seedSize) + 4)
 	{
-		memcpy(m_counterAndSeed + 4, seed, seedSize);
+		memcpy(m_counterAndSeed + 4, seed, ClampSize(seedSize));
 	}
 
 	void GenerateBlock(byte *output, size_t size)
@@ -3572,6 +3562,15 @@ public:
 		PutWord(false, BIG_ENDIAN_ORDER, m_counterAndSeed, m_counter);
 		++m_counter;
 		P1363_KDF2<SHA1>::DeriveKey(output, size, m_counterAndSeed, m_counterAndSeed.size(), NULLPTR, 0);
+	}
+
+	// UBsan finding, -Wstringop-overflow
+	inline size_t ClampSize(size_t req) const
+	{
+		// Clamp at 16 MB
+		if (req > 16U*1024*1024)
+			return 16U*1024*1024;
+		return req;
 	}
 
 private:
@@ -3697,32 +3696,24 @@ std::istream& operator>>(std::istream& in, Integer &a)
 	return in;
 }
 
+// Ensure base 10 is default
+inline int FlagToBase(long f) {
+	return f == std::ios::hex ? 16 : (f == std::ios::oct ? 8 : 10);
+}
+
+inline char FlagToSuffix(long f) {
+	return f == std::ios::hex ? 'h' : (f == std::ios::oct ? 'o' : '.');
+}
+
+// Ensure base 10 is default
 std::ostream& operator<<(std::ostream& out, const Integer &a)
 {
 	// Get relevant conversion specifications from ostream.
-	const long f = out.flags() & std::ios::basefield; // Get base digits.
-	int base, block;
-	char suffix;
-	switch(f)
-	{
-	case std::ios::oct :
-		base = 8;
-		block = 8;
-		suffix = 'o';
-		break;
-	case std::ios::hex :
-		base = 16;
-		block = 4;
-		suffix = 'h';
-		break;
-	default :
-		base = 10;
-		block = 3;
-		suffix = '.';
-	}
+	const long f = out.flags() & std::ios::basefield;
+	const int base = FlagToBase(f);
+	const char suffix = FlagToSuffix(f);
 
 	Integer temp1=a, temp2;
-
 	if (a.IsNegative())
 	{
 		out << '-';
@@ -3750,8 +3741,6 @@ std::ostream& operator<<(std::ostream& out, const Integer &a)
 	while (i--)
 	{
 		out << s[i];
-//		if (i && !(i%block))
-//			out << ",";
 	}
 
 #ifdef CRYPTOPP_USE_STD_SHOWBASE
@@ -3883,8 +3872,9 @@ Integer Integer::Xor(const Integer& t) const
 
 void PositiveAdd(Integer &sum, const Integer &a, const Integer& b)
 {
-	// Profiling tells us the original second Else If was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original second Else If was dominant, so it
+	// was promoted to the first If statement. The code change occurred at
+	// Commit dc99266599a0e72d.
 	int carry; const bool pre = (a.reg.size() == b.reg.size());
 	if (!pre && a.reg.size() > b.reg.size())
 	{
@@ -3918,14 +3908,15 @@ void PositiveSubtract(Integer &diff, const Integer &a, const Integer& b)
 	unsigned bSize = b.WordCount();
 	bSize += bSize%2;
 
-	// Profiling tells us the original second Else If was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original second Else If was dominant, so it
+	// was promoted to the first If statement. The code change occurred at
+	// Commit dc99266599a0e72d.
 	if (aSize > bSize)
 	{
 		word borrow = Subtract(diff.reg, a.reg, b.reg, bSize);
 		CopyWords(diff.reg+bSize, a.reg+bSize, aSize-bSize);
 		borrow = Decrement(diff.reg+bSize, aSize-bSize, borrow);
-		CRYPTOPP_ASSERT(!borrow);
+		CRYPTOPP_ASSERT(!borrow); CRYPTOPP_UNUSED(borrow);
 		diff.sign = Integer::POSITIVE;
 	}
 	else if (aSize == bSize)
@@ -3946,7 +3937,7 @@ void PositiveSubtract(Integer &diff, const Integer &a, const Integer& b)
 		word borrow = Subtract(diff.reg, b.reg, a.reg, aSize);
 		CopyWords(diff.reg+aSize, b.reg+aSize, bSize-aSize);
 		borrow = Decrement(diff.reg+aSize, bSize-aSize, borrow);
-		CRYPTOPP_ASSERT(!borrow);
+		CRYPTOPP_ASSERT(!borrow); CRYPTOPP_UNUSED(borrow);
 		diff.sign = Integer::NEGATIVE;
 	}
 }
@@ -4276,7 +4267,9 @@ void Integer::Divide(word &remainder, Integer &quotient, const Integer &dividend
 	if (!divisor)
 		throw Integer::DivideByZero();
 
-	if ((divisor & (divisor-1)) == 0)	// divisor is a power of 2
+	// IsPowerOf2 uses BMI on x86 if available. There is a small
+	// but measurable improvement during decryption and signing.
+	if (IsPowerOf2(divisor))
 	{
 		quotient = dividend >> (BitPrecision(divisor)-1);
 		remainder = dividend.reg[0] & (divisor-1);
@@ -4320,12 +4313,14 @@ word Integer::Modulo(word divisor) const
 
 	word remainder;
 
-	// Profiling tells us the original Else was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original Else was dominant, so it was
+	// promoted to the first If statement. The code change occurred
+	// at Commit dc99266599a0e72d.
 	if ((divisor & (divisor-1)) != 0)	// divisor is not a power of 2
 	{
-		// Profiling tells us the original Else was dominant, so it was promoted to the first If statement.
-		// The code change occurred at Commit dc99266599a0e72d.
+		// Profiling tells us the original Else was dominant, so it
+		// was promoted to the first If statement. The code change
+		// occurred at Commit dc99266599a0e72d.
 		unsigned int i = WordCount();
 		if (divisor > 5)
 		{
@@ -4360,8 +4355,9 @@ void Integer::Negate()
 
 int Integer::PositiveCompare(const Integer& t) const
 {
-	// Profiling tells us the original Else was dominant, so it was promoted to the first If statement.
-	// The code change occurred at Commit dc99266599a0e72d.
+	// Profiling tells us the original Else was dominant, so it
+	// was promoted to the first If statement. The code change
+	// occurred at Commit dc99266599a0e72d.
 	const unsigned size = WordCount(), tSize = t.WordCount();
 	if (size != tSize)
 		return size > tSize ? 1 : -1;
@@ -4423,11 +4419,19 @@ Integer Integer::MultiplicativeInverse() const
 
 Integer a_times_b_mod_c(const Integer &x, const Integer& y, const Integer& m)
 {
+	CRYPTOPP_ASSERT(m.NotZero());
+	if (m.IsZero())
+		throw Integer::DivideByZero();
+
 	return x*y%m;
 }
 
 Integer a_exp_b_mod_c(const Integer &x, const Integer& e, const Integer& m)
 {
+	CRYPTOPP_ASSERT(m.NotZero());
+	if (m.IsZero())
+		throw Integer::DivideByZero();
+
 	ModularArithmetic mr(m);
 	return mr.Exponentiate(x, e);
 }
@@ -4440,9 +4444,22 @@ Integer Integer::Gcd(const Integer &a, const Integer &b)
 Integer Integer::InverseMod(const Integer &m) const
 {
 	CRYPTOPP_ASSERT(m.NotNegative());
+	CRYPTOPP_ASSERT(m.NotZero());
 
 	if (IsNegative())
-		return Modulo(m).InverseMod(m);
+		return Modulo(m).InverseModNext(m);
+
+	// http://github.com/weidai11/cryptopp/issues/602
+	if (*this >= m)
+		return Modulo(m).InverseModNext(m);
+
+	return InverseModNext(m);
+}
+
+Integer Integer::InverseModNext(const Integer &m) const
+{
+	CRYPTOPP_ASSERT(m.NotNegative());
+	CRYPTOPP_ASSERT(m.NotZero());
 
 	if (m.IsEven())
 	{
@@ -4451,11 +4468,12 @@ Integer Integer::InverseMod(const Integer &m) const
 		if (*this == One())
 			return One();
 
-		Integer u = m.Modulo(*this).InverseMod(*this);
+		Integer u = m.Modulo(*this).InverseModNext(*this);
 		return !u ? Zero() : (m*(*this-u)+1)/(*this);
 	}
 
-	SecBlock<word> T(m.reg.size() * 4);
+	// AlmostInverse requires a 4x workspace
+	IntegerSecBlock T(m.reg.size() * 4);
 	Integer r((word)0, m.reg.size());
 	unsigned k = AlmostInverse(r.reg, T, reg, reg.size(), m.reg, m.reg.size());
 	DivideByPower2Mod(r.reg, r.reg, k, m.reg, m.reg.size());
@@ -4464,6 +4482,8 @@ Integer Integer::InverseMod(const Integer &m) const
 
 word Integer::InverseMod(word mod) const
 {
+	CRYPTOPP_ASSERT(mod != 0);
+
 	word g0 = mod, g1 = *this % mod;
 	word v0 = 0, v1 = 1;
 	word y;
@@ -4812,8 +4832,86 @@ bool AssignIntToInteger(const std::type_info &valueType, void *pInteger, const v
 	*reinterpret_cast<Integer *>(pInteger) = *reinterpret_cast<const int *>(pInt);
 	return true;
 }
+#endif  // CRYPTOPP_NO_ASSIGN_TO_INTEGER
+
+// *************************** C++ Static Initialization ***************************
+
+class InitInteger
+{
+public:
+	InitInteger()
+	{
+		SetFunctionPointers();
+	}
+};
+
+// This is not really needed because each Integer can dynamically initialize
+// itself, but we take a peephole optimization and initialize the class once
+// if init priorities are available. Dynamic initialization will be used if
+// init priorities are not available.
+
+#if defined(HAVE_GCC_INIT_PRIORITY)
+	const InitInteger s_init __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 10))) = InitInteger();
+	const Integer g_zero __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 11))) = Integer(0L);
+	const Integer g_one __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 12))) = Integer(1L);
+	const Integer g_two __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 13))) = Integer(2L);
+#elif defined(HAVE_MSC_INIT_PRIORITY)
+	#pragma warning(disable: 4075)
+	#pragma init_seg(".CRT$XCU")
+	const InitInteger s_init;
+	const Integer g_zero(0L);
+	const Integer g_one(1L);
+	const Integer g_two(2L);
+	#pragma warning(default: 4075)
+#elif HAVE_XLC_INIT_PRIORITY
+	// XLC needs constant, not a define
+	#pragma priority(280)
+	const InitInteger s_init;
+	const Integer g_zero(0L);
+	const Integer g_one(1L);
+	const Integer g_two(2L);
+#else
+	const InitInteger s_init;
 #endif
+
+// ***************** Library code ********************
+
+const Integer &Integer::Zero()
+{
+#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY) || defined(HAVE_XLC_INIT_PRIORITY)
+	return g_zero;
+#elif defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+	static const Integer s_zero(0L);
+	return s_zero;
+#else  // Potential memory leak. Avoid if possible.
+	return Singleton<Integer, NewInteger<0L> >().Ref();
+#endif
+}
+
+const Integer &Integer::One()
+{
+#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY) || defined(HAVE_XLC_INIT_PRIORITY)
+	return g_one;
+#elif defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+	static const Integer s_one(1L);
+	return s_one;
+#else  // Potential memory leak. Avoid if possible.
+	return Singleton<Integer, NewInteger<1L> >().Ref();
+#endif
+}
+
+const Integer &Integer::Two()
+{
+#if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY) || defined(HAVE_XLC_INIT_PRIORITY)
+	return g_two;
+#elif defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+	static const Integer s_two(2L);
+	return s_two;
+#else  // Potential memory leak. Avoid if possible.
+	return Singleton<Integer, NewInteger<2L> >().Ref();
+#endif
+}
 
 NAMESPACE_END
 
-#endif
+#endif  // CRYPTOPP_IMPORTS

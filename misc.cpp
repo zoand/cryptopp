@@ -22,6 +22,10 @@
 #if defined(CRYPTOPP_MEMALIGN_AVAILABLE) || defined(CRYPTOPP_MM_MALLOC_AVAILABLE) || defined(QNX)
 # include <malloc.h>
 #endif
+// for posix_memalign
+#if defined(CRYPTOPP_POSIX_MEMALIGN_AVAILABLE)
+# include <stdlib.h>
+#endif
 
 NAMESPACE_BEGIN(CryptoPP)
 
@@ -97,12 +101,12 @@ bool VerifyBufsEqual(const byte *buf, const byte *mask, size_t count)
 {
 	CRYPTOPP_ASSERT(buf != NULLPTR);
 	CRYPTOPP_ASSERT(mask != NULLPTR);
-	CRYPTOPP_ASSERT(count > 0);
+	// CRYPTOPP_ASSERT(count > 0);
 
 	size_t i=0;
 	byte acc8 = 0;
 
-	if (IsAligned<word32>(buf) && IsAligned<word32>(mask))
+	if (IsAligned<word32>(buf) && IsAligned<word32>(mask) && count)
 	{
 		word32 acc32 = 0;
 		if (!CRYPTOPP_BOOL_SLOW_WORD64 && IsAligned<word64>(buf) && IsAligned<word64>(mask))
@@ -276,19 +280,17 @@ void CallNewHandler()
 		throw std::bad_alloc();
 }
 
-#if CRYPTOPP_BOOL_ALIGN16
-
 void * AlignedAllocate(size_t size)
 {
 	byte *p;
-#if defined(CRYPTOPP_APPLE_ALLOC_AVAILABLE)
-	while ((p = (byte *)calloc(1, size)) == NULLPTR)
-#elif defined(CRYPTOPP_MM_MALLOC_AVAILABLE)
+#if defined(CRYPTOPP_MM_MALLOC_AVAILABLE)
 	while ((p = (byte *)_mm_malloc(size, 16)) == NULLPTR)
 #elif defined(CRYPTOPP_MEMALIGN_AVAILABLE)
 	while ((p = (byte *)memalign(16, size)) == NULLPTR)
 #elif defined(CRYPTOPP_MALLOC_ALIGNMENT_IS_16)
 	while ((p = (byte *)malloc(size)) == NULLPTR)
+#elif defined(CRYPTOPP_POSIX_MEMALIGN_AVAILABLE)
+	while (posix_memalign(reinterpret_cast<void**>(&p), 16, size) != 0)
 #else
 	while ((p = (byte *)malloc(size + 16)) == NULLPTR)
 #endif
@@ -296,10 +298,13 @@ void * AlignedAllocate(size_t size)
 
 #ifdef CRYPTOPP_NO_ALIGNED_ALLOC
 	size_t adjustment = 16-((size_t)p%16);
+	CRYPTOPP_ASSERT(adjustment > 0);
 	p += adjustment;
 	p[-1] = (byte)adjustment;
 #endif
 
+	// If this assert fires then there are problems that need
+	// to be fixed. Please open a bug report.
 	CRYPTOPP_ASSERT(IsAlignedOn(p, 16));
 	return p;
 }
@@ -315,8 +320,6 @@ void AlignedDeallocate(void *p)
 	free(p);
 #endif
 }
-
-#endif
 
 void * UnalignedAllocate(size_t size)
 {

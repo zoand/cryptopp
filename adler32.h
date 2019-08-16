@@ -1,8 +1,7 @@
 // adler32.h - originally written and placed in the public domain by Wei Dai
 
-//! \file
-//! \headerfile adler32.h
-//! \brief Class file for ADLER-32 checksum calculations
+/// \file adler32.h
+/// \brief Class file for ADLER-32 checksum calculations
 
 #ifndef CRYPTOPP_ADLER32_H
 #define CRYPTOPP_ADLER32_H
@@ -11,7 +10,7 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 
-//! ADLER-32 checksum calculations
+/// ADLER-32 checksum calculations
 class Adler32 : public HashTransformation
 {
 public:

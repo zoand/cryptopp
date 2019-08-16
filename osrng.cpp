@@ -8,8 +8,10 @@
 #ifndef CRYPTOPP_IMPORTS
 
 // Win32 has CryptoAPI and <wincrypt.h>. Windows 10 and Windows Store 10 have CNG and <bcrypt.h>.
-//  There's a hole for Windows Phone 8 and Windows Store 8. There is no userland crypto available.
-//  Also see http://stackoverflow.com/questions/36974545/random-numbers-for-windows-phone-8-and-windows-store-8
+//  There's a hole for Windows Phone 8 and Windows Store 8. There is no userland RNG available.
+//  Also see http://www.drdobbs.com/windows/using-c-and-com-with-winrt/240168150 and
+//  http://stackoverflow.com/questions/36974545/random-numbers-for-windows-phone-8-and-windows-store-8 and
+//  https://social.msdn.microsoft.com/Forums/vstudio/en-US/25b83e13-c85f-4aa1-a057-88a279ea3fd6/what-crypto-random-generator-c-code-could-use-on-wp81
 #if defined(CRYPTOPP_WIN32_AVAILABLE) && !defined(OS_RNG_AVAILABLE)
 # pragma message("WARNING: Compiling for Windows but an OS RNG is not available. This is likely a Windows Phone 8 or Windows Store 8 app.")
 #endif
@@ -132,6 +134,9 @@ NonblockingRng::NonblockingRng()
 	m_fd = open("/dev/urandom",O_RDONLY);
 	if (m_fd == -1)
 		throw OS_RNG_Err("open /dev/urandom");
+
+	// Do some OSes return -NNN instead of -1?
+	CRYPTOPP_ASSERT(m_fd >= 0);
 #endif
 }
 
@@ -146,7 +151,11 @@ void NonblockingRng::GenerateBlock(byte *output, size_t size)
 {
 #ifdef CRYPTOPP_WIN32_AVAILABLE
 	// Acquiring a provider is expensive. Do it once and retain the reference.
+# if defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+	static const MicrosoftCryptoProvider hProvider = MicrosoftCryptoProvider();
+# else
 	const MicrosoftCryptoProvider &hProvider = Singleton<MicrosoftCryptoProvider>().Ref();
+# endif
 # if defined(USE_MS_CRYPTOAPI)
 	if (!CryptGenRandom(hProvider.GetProviderHandle(), (DWORD)size, output))
 		throw OS_RNG_Err("CryptGenRandom");
@@ -197,6 +206,9 @@ BlockingRng::BlockingRng()
 	m_fd = open(CRYPTOPP_BLOCKING_RNG_FILENAME,O_RDONLY);
 	if (m_fd == -1)
 		throw OS_RNG_Err("open " CRYPTOPP_BLOCKING_RNG_FILENAME);
+
+	// Do some OSes return -NNN instead of -1?
+	CRYPTOPP_ASSERT(m_fd >= 0);
 }
 
 BlockingRng::~BlockingRng()

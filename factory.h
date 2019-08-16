@@ -1,7 +1,7 @@
 // factory.h - originally written and placed in the public domain by Wei Dai
 
-//! \file factory.h
-//! \brief Classes and functions for registering and locating library objects
+/// \file factory.h
+/// \brief Classes and functions for registering and locating library objects
 
 #ifndef CRYPTOPP_OBJFACT_H
 #define CRYPTOPP_OBJFACT_H
@@ -12,9 +12,8 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 
-//! \class ObjectFactory
-//! \brief Object factory interface for registering objects
-//! \tparam AbstractClass Base class interface of the object
+/// \brief Object factory interface for registering objects
+/// \tparam AbstractClass Base class interface of the object
 template <class AbstractClass>
 class ObjectFactory
 {
@@ -23,10 +22,9 @@ public:
 	virtual AbstractClass * CreateObject() const =0;
 };
 
-//! \class DefaultObjectFactory
-//! \brief Object factory for registering objects
-//! \tparam AbstractClass Base class interface of the object
-//! \tparam ConcreteClass Class object
+/// \brief Object factory for registering objects
+/// \tparam AbstractClass Base class interface of the object
+/// \tparam ConcreteClass Class object
 template <class AbstractClass, class ConcreteClass>
 class DefaultObjectFactory : public ObjectFactory<AbstractClass>
 {
@@ -37,10 +35,9 @@ public:
 	}
 };
 
-//! \class ObjectFactoryRegistry
-//! \brief Object factory registry
-//! \tparam AbstractClass Base class interface of the object
-//! \tparam instance unique identifier
+/// \brief Object factory registry
+/// \tparam AbstractClass Base class interface of the object
+/// \tparam instance unique identifier
 template <class AbstractClass, int instance=0>
 class ObjectFactoryRegistry
 {
@@ -105,11 +102,10 @@ ObjectFactoryRegistry<AbstractClass, instance> & ObjectFactoryRegistry<AbstractC
 	return s_registry;
 }
 
-//! \class RegisterDefaultFactoryFor
-//! \brief Object factory registry helper
-//! \tparam AbstractClass Base class interface of the object
-//! \tparam ConcreteClass Class object
-//! \tparam instance unique identifier
+/// \brief Object factory registry helper
+/// \tparam AbstractClass Base class interface of the object
+/// \tparam ConcreteClass Class object
+/// \tparam instance unique identifier
 template <class AbstractClass, class ConcreteClass, int instance = 0>
 struct RegisterDefaultFactoryFor
 {
@@ -122,13 +118,13 @@ struct RegisterDefaultFactoryFor
 	}
 };
 
-//! \fn RegisterAsymmetricCipherDefaultFactories
-//! \brief Register asymmetric ciphers
-//! \tparam SchemeClass interface of the object under a scheme
-//! \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
-//!   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
+/// \fn RegisterAsymmetricCipherDefaultFactories
+/// \brief Register asymmetric ciphers
+/// \tparam SchemeClass interface of the object under a scheme
+/// \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
+///   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
 template <class SchemeClass>
 void RegisterAsymmetricCipherDefaultFactories(const char *name=NULLPTR)
 {
@@ -136,13 +132,13 @@ void RegisterAsymmetricCipherDefaultFactories(const char *name=NULLPTR)
 	RegisterDefaultFactoryFor<PK_Decryptor, typename SchemeClass::Decryptor>((const char *)name);
 }
 
-//! \fn RegisterSignatureSchemeDefaultFactories
-//! \brief Register signature schemes
-//! \tparam SchemeClass interface of the object under a scheme
-//! \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
-//!   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
+/// \fn RegisterSignatureSchemeDefaultFactories
+/// \brief Register signature schemes
+/// \tparam SchemeClass interface of the object under a scheme
+/// \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
+///   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
 template <class SchemeClass>
 void RegisterSignatureSchemeDefaultFactories(const char *name=NULLPTR)
 {
@@ -150,13 +146,13 @@ void RegisterSignatureSchemeDefaultFactories(const char *name=NULLPTR)
 	RegisterDefaultFactoryFor<PK_Verifier, typename SchemeClass::Verifier>((const char *)name);
 }
 
-//! \fn RegisterSymmetricCipherDefaultFactories
-//! \brief Register symmetric ciphers
-//! \tparam SchemeClass interface of the object under a scheme
-//! \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
-//!   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
+/// \fn RegisterSymmetricCipherDefaultFactories
+/// \brief Register symmetric ciphers
+/// \tparam SchemeClass interface of the object under a scheme
+/// \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
+///   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
 template <class SchemeClass>
 void RegisterSymmetricCipherDefaultFactories(const char *name=NULLPTR)
 {
@@ -164,13 +160,13 @@ void RegisterSymmetricCipherDefaultFactories(const char *name=NULLPTR)
 	RegisterDefaultFactoryFor<SymmetricCipher, typename SchemeClass::Decryption, DECRYPTION>((const char *)name);
 }
 
-//! \fn RegisterAuthenticatedSymmetricCipherDefaultFactories
-//! \brief Register authenticated symmetric ciphers
-//! \tparam SchemeClass interface of the object under a scheme
-//! \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
-//!   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
-//!   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
+/// \fn RegisterAuthenticatedSymmetricCipherDefaultFactories
+/// \brief Register authenticated symmetric ciphers
+/// \tparam SchemeClass interface of the object under a scheme
+/// \details Schemes include asymmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   signature schemes (registers <tt>SchemeClass::Signer</tt> and <tt>SchemeClass::Verifier</tt>),
+///   symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>),
+///   authenticated symmetric ciphers (registers <tt>SchemeClass::Encryptor</tt> and <tt>SchemeClass::Decryptor</tt>), etc.
 template <class SchemeClass>
 void RegisterAuthenticatedSymmetricCipherDefaultFactories(const char *name=NULLPTR)
 {

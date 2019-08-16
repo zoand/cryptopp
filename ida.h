@@ -1,7 +1,7 @@
 // ida.h - originally written and placed in the public domain by Wei Dai
 
-//! \file ida.h
-//! \brief Classes for Rabin's Information Dispersal and Shamir's Secret Sharing algorithms
+/// \file ida.h
+/// \brief Classes for Rabin's Information Dispersal and Shamir's Secret Sharing algorithms
 
 #ifndef CRYPTOPP_IDA_H
 #define CRYPTOPP_IDA_H
@@ -11,19 +11,19 @@
 #include "filters.h"
 #include "channels.h"
 #include "secblock.h"
+#include "gf2_32.h"
 #include "stdcpp.h"
 #include "misc.h"
 
 NAMESPACE_BEGIN(CryptoPP)
 
-//! \class RawIDA
-//! \brief Secret sharing and information dispersal base class
-//! \since Crypto++ 1.0
+/// \brief Secret sharing and information dispersal base class
+/// \since Crypto++ 1.0
 class RawIDA : public AutoSignaling<Unflushable<Multichannel<Filter> > >
 {
 public:
 	RawIDA(BufferedTransformation *attachment=NULLPTR)
-		: m_threshold (0), m_channelsReady(0), m_channelsFinished(0)
+		: m_channelsReady(0), m_channelsFinished(0), m_threshold (0)
 			{Detach(attachment);}
 
 	unsigned int GetThreshold() const {return m_threshold;}
@@ -57,21 +57,21 @@ protected:
 	std::vector<word32> m_inputChannelIds, m_outputChannelIds, m_outputToInput;
 	std::vector<std::string> m_outputChannelIdStrings;
 	std::vector<ByteQueue> m_outputQueues;
-	int m_threshold;
-	unsigned int m_channelsReady, m_channelsFinished;
 	std::vector<SecBlock<word32> > m_v;
 	SecBlock<word32> m_u, m_w, m_y;
+	const GF2_32 m_gf32;
+	unsigned int m_channelsReady, m_channelsFinished;
+	int m_threshold;
 };
 
-//! \class SecretSharing
-//! \brief Shamir's Secret Sharing Algorithm
-//! \details SecretSharing is a variant of Shamir's secret sharing algorithm
-//! \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
-//! \since Crypto++ 1.0
+/// \brief Shamir's Secret Sharing Algorithm
+/// \details SecretSharing is a variant of Shamir's secret sharing algorithm
+/// \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
+/// \since Crypto++ 1.0
 class SecretSharing : public CustomFlushPropagation<Filter>
 {
 public:
-	//! \brief Construct a SecretSharing
+	/// \brief Construct a SecretSharing
 	SecretSharing(RandomNumberGenerator &rng, int threshold, int nShares, BufferedTransformation *attachment=NULLPTR, bool addPadding=true)
 		: m_rng(rng), m_ida(new OutputProxy(*this, true))
 	{
@@ -89,15 +89,14 @@ protected:
 	bool m_pad;
 };
 
-//! \class SecretRecovery
-//! \brief Shamir's Secret Sharing Algorithm
-//! \details SecretSharing is a variant of Shamir's secret sharing algorithm
-//! \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
-//! \since Crypto++ 1.0
+/// \brief Shamir's Secret Sharing Algorithm
+/// \details SecretSharing is a variant of Shamir's secret sharing algorithm
+/// \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
+/// \since Crypto++ 1.0
 class SecretRecovery : public RawIDA
 {
 public:
-	//! \brief Construct a SecretRecovery
+	/// \brief Construct a SecretRecovery
 	SecretRecovery(int threshold, BufferedTransformation *attachment=NULLPTR, bool removePadding=true)
 		: RawIDA(attachment)
 		{IsolatedInitialize(MakeParameters("RecoveryThreshold", threshold)("RemovePadding", removePadding));}
@@ -113,15 +112,14 @@ protected:
 
 /// a variant of Rabin's Information Dispersal Algorithm
 
-//! \class InformationDispersal
-//! \brief Rabin's Information Dispersal Algorithm
-//! \details InformationDispersal is a variant of Rabin's information dispersal algorithm
-//! \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
-//! \since Crypto++ 1.0
+/// \brief Rabin's Information Dispersal Algorithm
+/// \details InformationDispersal is a variant of Rabin's information dispersal algorithm
+/// \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
+/// \since Crypto++ 1.0
 class InformationDispersal : public CustomFlushPropagation<Filter>
 {
 public:
-	//! \brief Construct a InformationDispersal
+	/// \brief Construct a InformationDispersal
 	InformationDispersal(int threshold, int nShares, BufferedTransformation *attachment=NULLPTR, bool addPadding=true)
 		: m_ida(new OutputProxy(*this, true)), m_pad(false), m_nextChannel(0)
 	{
@@ -139,15 +137,14 @@ protected:
 	unsigned int m_nextChannel;
 };
 
-//! \class InformationRecovery
-//! \brief Rabin's Information Dispersal Algorithm
-//! \details InformationDispersal is a variant of Rabin's information dispersal algorithm
-//! \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
-//! \since Crypto++ 1.0
+/// \brief Rabin's Information Dispersal Algorithm
+/// \details InformationDispersal is a variant of Rabin's information dispersal algorithm
+/// \sa SecretRecovery, SecretRecovery, InformationDispersal, InformationRecovery
+/// \since Crypto++ 1.0
 class InformationRecovery : public RawIDA
 {
 public:
-	//! \brief Construct a InformationRecovery
+	/// \brief Construct a InformationRecovery
 	InformationRecovery(int threshold, BufferedTransformation *attachment=NULLPTR, bool removePadding=true)
 		: RawIDA(attachment), m_pad(false)
 		{IsolatedInitialize(MakeParameters("RecoveryThreshold", threshold)("RemovePadding", removePadding));}

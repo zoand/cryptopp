@@ -182,7 +182,7 @@ void HuffmanDecoder::FillCacheEntry(LookupEntry &entry, code_t normalizedCode) c
 
 inline unsigned int HuffmanDecoder::Decode(code_t code, /* out */ value_t &value) const
 {
-	CRYPTOPP_ASSERT(((int)(code & m_cacheMask)) < m_cache.size());
+	CRYPTOPP_ASSERT(((int)(code & m_cacheMask)) < (int)m_cache.size());
 	LookupEntry &entry = m_cache[code & m_cacheMask];
 
 	code_t normalizedCode = 0;
@@ -377,6 +377,7 @@ void Inflator::DecodeHeader()
 		throw UnexpectedEndErr();
 	m_eof = m_reader.GetBits(1) != 0;
 	m_blockType = (byte)m_reader.GetBits(2);
+
 	switch (m_blockType)
 	{
 	case 0:	// stored
@@ -400,13 +401,13 @@ void Inflator::DecodeHeader()
 		unsigned int hlit = m_reader.GetBits(5);
 		unsigned int hdist = m_reader.GetBits(5);
 		unsigned int hclen = m_reader.GetBits(4);
+		unsigned int i = 0;
 
 		FixedSizeSecBlock<unsigned int, 286+32> codeLengths;
-		unsigned int i;
 		static const unsigned int border[] = {    // Order of the bit length code lengths
 			16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 		std::fill(codeLengths.begin(), codeLengths+19, 0);
-		for (i=0; i<hclen+4; i++)
+		for (i=0; i<hclen+4; ++i)
 		{
 			CRYPTOPP_ASSERT(border[i] < codeLengths.size());
 			codeLengths[border[i]] = m_reader.GetBits(3);
@@ -414,11 +415,13 @@ void Inflator::DecodeHeader()
 
 		try
 		{
+			bool result = false;
+			unsigned int k=0, count=0, repeater=0;
 			HuffmanDecoder codeLengthDecoder(codeLengths, 19);
-			for (i = 0; i < hlit+257+hdist+1; )
+			for (i=0; i < hlit+257+hdist+1; )
 			{
-				unsigned int k = 0, count = 0, repeater = 0;
-				bool result = codeLengthDecoder.Decode(m_reader, k);
+				k = 0, count = 0, repeater = 0;
+				result = codeLengthDecoder.Decode(m_reader, k);
 				if (!result)
 					throw UnexpectedEndErr();
 				if (k <= 15)
@@ -556,7 +559,6 @@ bool Inflator::DecodeBody()
 						break;
 					}
 		case DISTANCE_BITS:
-					// TODO: this surfaced during fuzzing. What do we do???
 					CRYPTOPP_ASSERT(m_distance < COUNTOF(distanceExtraBits));
 					if (m_distance >= COUNTOF(distanceExtraBits))
 						throw BadDistanceErr();
@@ -566,7 +568,6 @@ bool Inflator::DecodeBody()
 						m_nextDecode = DISTANCE_BITS;
 						break;
 					}
-					// TODO: this surfaced during fuzzing. What do we do???
 					CRYPTOPP_ASSERT(m_distance < COUNTOF(distanceStarts));
 					if (m_distance >= COUNTOF(distanceStarts))
 						throw BadDistanceErr();
@@ -611,41 +612,51 @@ void Inflator::FlushOutput()
 	}
 }
 
-struct NewFixedLiteralDecoder
+void Inflator::CreateFixedLiteralDecoder()
 {
-	HuffmanDecoder * operator()() const
-	{
-		unsigned int codeLengths[288];
-		std::fill(codeLengths + 0, codeLengths + 144, 8);
-		std::fill(codeLengths + 144, codeLengths + 256, 9);
-		std::fill(codeLengths + 256, codeLengths + 280, 7);
-		std::fill(codeLengths + 280, codeLengths + 288, 8);
-		member_ptr<HuffmanDecoder> pDecoder(new HuffmanDecoder);
-		pDecoder->Initialize(codeLengths, 288);
-		return pDecoder.release();
-	}
-};
-
-struct NewFixedDistanceDecoder
-{
-	HuffmanDecoder * operator()() const
-	{
-		unsigned int codeLengths[32];
-		std::fill(codeLengths + 0, codeLengths + 32, 5);
-		member_ptr<HuffmanDecoder> pDecoder(new HuffmanDecoder);
-		pDecoder->Initialize(codeLengths, 32);
-		return pDecoder.release();
-	}
-};
-
-const HuffmanDecoder& Inflator::GetLiteralDecoder() const
-{
-	return m_blockType == 1 ? Singleton<HuffmanDecoder, NewFixedLiteralDecoder>().Ref() : m_dynamicLiteralDecoder;
+	unsigned int codeLengths[288];
+	std::fill(codeLengths + 0, codeLengths + 144, 8);
+	std::fill(codeLengths + 144, codeLengths + 256, 9);
+	std::fill(codeLengths + 256, codeLengths + 280, 7);
+	std::fill(codeLengths + 280, codeLengths + 288, 8);
+	m_fixedLiteralDecoder.reset(new HuffmanDecoder);
+	m_fixedLiteralDecoder->Initialize(codeLengths, 288);
 }
 
-const HuffmanDecoder& Inflator::GetDistanceDecoder() const
+void Inflator::CreateFixedDistanceDecoder()
 {
-	return m_blockType == 1 ? Singleton<HuffmanDecoder, NewFixedDistanceDecoder>().Ref() : m_dynamicDistanceDecoder;
+	unsigned int codeLengths[32];
+	std::fill(codeLengths + 0, codeLengths + 32, 5);
+	m_fixedDistanceDecoder.reset(new HuffmanDecoder);
+	m_fixedDistanceDecoder->Initialize(codeLengths, 32);
+}
+
+const HuffmanDecoder& Inflator::GetLiteralDecoder()
+{
+	if (m_blockType == 1)
+	{
+		if (m_fixedLiteralDecoder.get() == NULLPTR)
+			CreateFixedLiteralDecoder();
+		return *m_fixedLiteralDecoder;
+	}
+	else
+	{
+		return m_dynamicLiteralDecoder;
+	}
+}
+
+const HuffmanDecoder& Inflator::GetDistanceDecoder()
+{
+	if (m_blockType == 1)
+	{
+		if (m_fixedDistanceDecoder.get() == NULLPTR)
+			CreateFixedDistanceDecoder();
+		return *m_fixedDistanceDecoder;
+	}
+	else
+	{
+		return m_dynamicDistanceDecoder;
+	}
 }
 
 NAMESPACE_END

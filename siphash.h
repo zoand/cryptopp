@@ -1,27 +1,27 @@
 // siphash.h - written and placed in public domain by Jeffrey Walton.
 
-//! \file siphash.h
-//! \brief Classes for SipHash message authentication code
-//! \details SipHash computes a 64-bit or 128-bit message authentication code from a variable-length
-//!   message and 128-bit secret key. It was designed to be efficient even for short inputs, with
-//!   performance comparable to non-cryptographic hash functions.
-//! \details To create a SipHash-2-4 object with a 64-bit MAC use code similar to the following.
-//!   <pre>  SecByteBlock key(16);
-//!   prng.GenerateBlock(key, key.size());
-//!
-//!   SipHash<2,4,false> hash(key, key.size());
-//!   hash.Update(...);
-//!   hash.Final(...);</pre>
-//! \details To create a SipHash-2-4 object with a 128-bit MAC use code similar to the following.
-//!   <pre>  SecByteBlock key(16);
-//!   prng.GenerateBlock(key, key.size());
-//!
-//!   SipHash<2,4,true> hash(key, key.size());
-//!   hash.Update(...);
-//!   hash.Final(...);</pre>
-//! \sa Jean-Philippe Aumasson and Daniel J. Bernstein <A HREF="http://131002.net/siphash/siphash.pdf">SipHash:
-//!   a fast short-input PRF</A>
-//! \since Crypto++ 6.0
+/// \file siphash.h
+/// \brief Classes for SipHash message authentication code
+/// \details SipHash computes a 64-bit or 128-bit message authentication code from a variable-length
+///   message and 128-bit secret key. It was designed to be efficient even for short inputs, with
+///   performance comparable to non-cryptographic hash functions.
+/// \details To create a SipHash-2-4 object with a 64-bit MAC use code similar to the following.
+///   <pre>  SecByteBlock key(16);
+///   prng.GenerateBlock(key, key.size());
+///
+///   SipHash<2,4,false> hash(key, key.size());
+///   hash.Update(...);
+///   hash.Final(...);</pre>
+/// \details To create a SipHash-2-4 object with a 128-bit MAC use code similar to the following.
+///   <pre>  SecByteBlock key(16);
+///   prng.GenerateBlock(key, key.size());
+///
+///   SipHash<2,4,true> hash(key, key.size());
+///   hash.Update(...);
+///   hash.Final(...);</pre>
+/// \sa Jean-Philippe Aumasson and Daniel J. Bernstein <A HREF="http://131002.net/siphash/siphash.pdf">SipHash:
+///   a fast short-input PRF</A>
+/// \since Crypto++ 6.0
 
 #ifndef CRYPTOPP_SIPHASH_H
 #define CRYPTOPP_SIPHASH_H
@@ -32,9 +32,8 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 
-//! \class SipHash_Info
-//! \brief SipHash message authentication code information
-//! \tparam T_128bit flag indicating 128-bit (true) versus 64-bit (false) digest size
+/// \brief SipHash message authentication code information
+/// \tparam T_128bit flag indicating 128-bit (true) versus 64-bit (false) digest size
 template <bool T_128bit>
 class SipHash_Info : public FixedKeyLength<16>
 {
@@ -43,11 +42,10 @@ public:
 	CRYPTOPP_CONSTANT(DIGESTSIZE = (T_128bit ? 16 : 8))
 };
 
-//! \class SipHash_Base
-//! \brief SipHash message authentication code base class
-//! \tparam C the number of compression rounds
-//! \tparam D the number of finalization rounds
-//! \tparam T_128bit flag indicating 128-bit (true) versus 64-bit (false) digest size
+/// \brief SipHash message authentication code base class
+/// \tparam C the number of compression rounds
+/// \tparam D the number of finalization rounds
+/// \tparam T_128bit flag indicating 128-bit (true) versus 64-bit (false) digest size
 template <unsigned int C, unsigned int D, bool T_128bit>
 class SipHash_Base : public MessageAuthenticationCode, public SipHash_Info<T_128bit>
 {
@@ -90,19 +88,19 @@ protected:
 	inline void SIPROUND()
 	{
 		m_v[0] += m_v[1];
-		m_v[1] = rotlFixed(m_v[1], 13U);
+		m_v[1] = rotlConstant<13>(m_v[1]);
 		m_v[1] ^= m_v[0];
-		m_v[0] = rotlFixed(m_v[0], 32U);
+		m_v[0] = rotlConstant<32>(m_v[0]);
 		m_v[2] += m_v[3];
-		m_v[3] = rotlFixed(m_v[3], 16U);
+		m_v[3] = rotlConstant<16>(m_v[3]);
 		m_v[3] ^= m_v[2];
 		m_v[0] += m_v[3];
-		m_v[3] = rotlFixed(m_v[3], 21U);
+		m_v[3] = rotlConstant<21>(m_v[3]);
 		m_v[3] ^= m_v[0];
 		m_v[2] += m_v[1];
-		m_v[1] = rotlFixed(m_v[1], 17U);
+		m_v[1] = rotlConstant<17>(m_v[1]);
 		m_v[1] ^= m_v[2];
-		m_v[2] = rotlFixed(m_v[2], 32U);
+		m_v[2] = rotlConstant<32>(m_v[2]);
 	}
 
 private:
@@ -115,41 +113,40 @@ private:
 	size_t m_idx;
 };
 
-//! \class SipHash
-//! \brief SipHash message authentication code
-//! \tparam C the number of compression rounds
-//! \tparam D the number of finalization rounds
-//! \tparam T_128bit flag indicating 128-bit (true) versus 64-bit (false) digest size
-//! \details SipHash computes a 64-bit or 128-bit message authentication code from a variable-length
-//!   message and 128-bit secret key. It was designed to be efficient even for short inputs, with
-//!   performance comparable to non-cryptographic hash functions.
-//! \details To create a SipHash-2-4 object with a 64-bit MAC use code similar to the following.
-//!   <pre>  SecByteBlock key(16);
-//!   prng.GenerateBlock(key, key.size());
-//!
-//!   SipHash<2,4,false> hash(key, key.size());
-//!   hash.Update(...);
-//!   hash.Final(...);</pre>
-//! \details To create a SipHash-2-4 object with a 128-bit MAC use code similar to the following.
-//!   <pre>  SecByteBlock key(16);
-//!   prng.GenerateBlock(key, key.size());
-//!
-//!   SipHash<2,4,true> hash(key, key.size());
-//!   hash.Update(...);
-//!   hash.Final(...);</pre>
-//! \sa Jean-Philippe Aumasson and Daniel J. Bernstein <A HREF="http://131002.net/siphash/siphash.pdf">SipHash:
-//!   a fast short-input PRF</A>
-//! \since Crypto++ 6.0
+/// \brief SipHash message authentication code
+/// \tparam C the number of compression rounds
+/// \tparam D the number of finalization rounds
+/// \tparam T_128bit flag indicating 128-bit (true) versus 64-bit (false) digest size
+/// \details SipHash computes a 64-bit or 128-bit message authentication code from a variable-length
+///   message and 128-bit secret key. It was designed to be efficient even for short inputs, with
+///   performance comparable to non-cryptographic hash functions.
+/// \details To create a SipHash-2-4 object with a 64-bit MAC use code similar to the following.
+///   <pre>  SecByteBlock key(16);
+///   prng.GenerateBlock(key, key.size());
+///
+///   SipHash<2,4,false> hash(key, key.size());
+///   hash.Update(...);
+///   hash.Final(...);</pre>
+/// \details To create a SipHash-2-4 object with a 128-bit MAC use code similar to the following.
+///   <pre>  SecByteBlock key(16);
+///   prng.GenerateBlock(key, key.size());
+///
+///   SipHash<2,4,true> hash(key, key.size());
+///   hash.Update(...);
+///   hash.Final(...);</pre>
+/// \sa Jean-Philippe Aumasson and Daniel J. Bernstein <A HREF="http://131002.net/siphash/siphash.pdf">SipHash:
+///   a fast short-input PRF</A>
+/// \since Crypto++ 6.0
 template <unsigned int C=2, unsigned int D=4, bool T_128bit=false>
 class SipHash : public SipHash_Base<C, D, T_128bit>
 {
 public:
-	//! \brief Create a SipHash
+	/// \brief Create a SipHash
 	SipHash()
 		{this->UncheckedSetKey(NULLPTR, 0, g_nullNameValuePairs);}
-	//! \brief Create a SipHash
-	//! \param key a byte array used to key the cipher
-	//! \param length the size of the byte array, in bytes
+	/// \brief Create a SipHash
+	/// \param key a byte array used to key the cipher
+	/// \param length the size of the byte array, in bytes
 	SipHash(const byte *key, unsigned int length)
 		{this->UncheckedSetKey(key, length, g_nullNameValuePairs);}
 };
@@ -214,21 +211,27 @@ void SipHash_Base<C,D,T_128bit>::TruncatedFinal(byte *digest, size_t digestSize)
 	m_b[0] += m_idx; m_b[0] <<= 56U;
 	switch (m_idx)
 	{
-		// all fall through
 		case 7:
 			m_b[0] |= ((word64)m_acc[6]) << 48;
+			// fall through
 		case 6:
 			m_b[0] |= ((word64)m_acc[5]) << 40;
+			// fall through
 		case 5:
 			m_b[0] |= ((word64)m_acc[4]) << 32;
+			// fall through
 		case 4:
 			m_b[0] |= ((word64)m_acc[3]) << 24;
+			// fall through
 		case 3:
 			m_b[0] |= ((word64)m_acc[2]) << 16;
+			// fall through
 		case 2:
 			m_b[0] |= ((word64)m_acc[1]) << 8;
+			// fall through
 		case 1:
 			m_b[0] |= ((word64)m_acc[0]);
+			// fall through
 		case 0:
 			break;
 	}

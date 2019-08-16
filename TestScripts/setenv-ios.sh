@@ -13,6 +13,12 @@
 
 # set -eu
 
+# Sanity check
+if [ "$0" = "${BASH_SOURCE[0]}" ]; then
+    echo "Please source this setenv script"
+    exit 0
+fi
+
 #########################################
 #####       Clear old options       #####
 #########################################
@@ -42,6 +48,7 @@ SETENV_VERBOSE=1
 
 APPLE_SDK=
 IOS_ARCH=
+BACK_ARCH=
 
 for ARG in "$@"
 do
@@ -49,66 +56,79 @@ do
 
   # i386 (simulator)
   if [ "$CL" == "i386" ]; then
-    IOS_ARCH=i386
+    BACK_ARCH=i386
+    APPLE_SDK=iPhoneSimulator
   fi
 
   # x86_64 (simulator)
   if [ "$CL" == "x86_64" ]; then
-    IOS_ARCH=x86_64
+    BACK_ARCH=x86_64
+    APPLE_SDK=iPhoneSimulator
   fi
 
   # ARMv5
   if [ "$CL" == "armv5" ]; then
-    IOS_ARCH=armv5
+    BACK_ARCH=armv5
+    APPLE_SDK=iPhoneOS
   fi
 
   # ARMv6
   if [ "$CL" == "armv6" ]; then
-    IOS_ARCH=armv6
+    BACK_ARCH=armv6
+    APPLE_SDK=iPhoneOS
   fi
 
   # ARMv7
   if [ "$CL" == "armv7" ]; then
-    IOS_ARCH=armv7
+    BACK_ARCH=armv7
+    APPLE_SDK=iPhoneOS
   fi
 
   # ARMv7s
   if [ "$CL" == "armv7s" ]; then
-    IOS_ARCH=armv7s
+    BACK_ARCH=armv7s
+    APPLE_SDK=iPhoneOS
   fi
 
   # ARM64
   if [[ ("$CL" == "arm64" || "$CL" == "armv8" || "$CL" == "aarch64") ]]; then
-    IOS_ARCH=arm64
+    BACK_ARCH=arm64
+    APPLE_SDK=iPhoneOS
   fi
 
   # iPhone
   if [[ ("$CL" == "iphone" || "$CL" == "iphoneos") ]]; then
+    BACK_ARCH=armv7
     APPLE_SDK=iPhoneOS
   fi
 
   # iPhone Simulator
   if [[ ("$CL" == "simulator" || "$CL" == "iphonesimulator") ]]; then
+    BACK_ARCH=i386
     APPLE_SDK=iPhoneSimulator
   fi
 
   # Watch
   if [[ ("$CL" == "watch" || "$CL" == "watchos" || "$CL" == "applewatch") ]]; then
+    BACK_ARCH=armv7
     APPLE_SDK=WatchOS
   fi
 
   # Watch Simulator
   if [ "$CL" == "watchsimulator" ]; then
+    BACK_ARCH=i386
     APPLE_SDK=WatchSimulator
   fi
 
   # Apple TV
   if [[ ("$CL" == "tv" || "$CL" == "appletv" || "$CL" == "appletvos") ]]; then
+    BACK_ARCH=arm64
     APPLE_SDK=AppleTVOS
   fi
 
   # Apple TV Simulator
   if [[ ("$CL" == "tvsimulator" || "$CL" == "appletvsimulator") ]]; then
+    BACK_ARCH=x86_64
     APPLE_SDK=AppleTVSimulator
   fi
 
@@ -116,21 +136,13 @@ done
 
 # Defaults if not set
 if [ -z "$APPLE_SDK" ]; then
-	APPLE_SDK=iPhoneOS
+    BACK_ARCH=armv7
+    APPLE_SDK=iPhoneOS
 fi
 
+# Defaults if not set
 if [ -z "$IOS_ARCH" ]; then
-	if [ "$APPLE_SDK" == "iPhoneOS" ]; then
-		IOS_ARCH=armv7
-	elif [ "$APPLE_SDK" == "iPhoneSimulator" ]; then
-		IOS_ARCH=i386
-	elif [ "$APPLE_SDK" == "AppleTVOS" ]; then
-		IOS_ARCH=arm64
-	elif [ "$APPLE_SDK" == "WatchOS" ]; then
-		IOS_ARCH=armv7
-	fi
-
-	# TODO: fill in missing simulator architectures
+    IOS_ARCH="$BACK_ARCH"
 fi
 
 # Allow a user override? I think we should be doing this. The use case is:
@@ -143,7 +155,7 @@ fi
 
 if [ ! -d "$XCODE_DEVELOPER" ]; then
   echo "ERROR: unable to find XCODE_DEVELOPER directory."
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # Default toolchain location
@@ -151,7 +163,7 @@ XCODE_TOOLCHAIN="$XCODE_DEVELOPER/usr/bin"
 
 if [ ! -d "$XCODE_TOOLCHAIN" ]; then
   echo "ERROR: unable to find XCODE_TOOLCHAIN directory."
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # XCODE_DEVELOPER_TOP is the top of the development tools tree
@@ -159,7 +171,7 @@ XCODE_DEVELOPER_TOP="$XCODE_DEVELOPER/Platforms/$APPLE_SDK.platform/Developer"
 
 if [ ! -d "$XCODE_DEVELOPER_TOP" ]; then
   echo "ERROR: unable to find XCODE_DEVELOPER_TOP directory."
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # IOS_TOOLCHAIN is the location of the actual compiler tools.
@@ -171,7 +183,7 @@ fi
 
 if [ -z "$IOS_TOOLCHAIN" ] || [ ! -d "$IOS_TOOLCHAIN" ]; then
   echo "ERROR: unable to find Xcode cross-compiler tools."
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 #
@@ -181,36 +193,57 @@ fi
 unset XCODE_SDK
 for i in $(seq -f "%.1f" 20.0 -0.1 1.0)
 do
-	if [ -d "$XCODE_DEVELOPER/Platforms/$APPLE_SDK.platform/Developer/SDKs/$APPLE_SDK$i.sdk" ]; then
-    	XCODE_SDK="$APPLE_SDK$i.sdk"
-      	break
-	fi
+    if [ -d "$XCODE_DEVELOPER/Platforms/$APPLE_SDK.platform/Developer/SDKs/$APPLE_SDK$i.sdk" ]; then
+        XCODE_SDK="$APPLE_SDK$i.sdk"
+          break
+    fi
 done
 
 # Error checking
 if [ -z "$XCODE_SDK" ]; then
     echo "ERROR: unable to find a SDK."
-    [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+    [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
+fi
+
+# https://github.com/weidai11/cryptopp/issues/635
+if [ "$APPLE_SDK" == "iPhoneSimulator" ]; then
+  IOS_FLAGS="$IOS_FLAGS -DCRYPTOPP_DISABLE_ASM"
 fi
 
 # Simulator fixup. LD fails to link dylib.
 if [ "$APPLE_SDK" == "iPhoneSimulator" ] && [ "$IOS_ARCH" == "i386" ]; then
-  IOS_FLAGS=-miphoneos-version-min=5
+  IOS_FLAGS="$IOS_FLAGS -miphoneos-version-min=5"
 fi
 
 # ARMv7s fixup. Xcode 4/iOS 6
 if [ "$IOS_ARCH" == "armv7s" ]; then
-  IOS_FLAGS=-miphoneos-version-min=6
+  IOS_FLAGS="$IOS_FLAGS -miphoneos-version-min=6"
 fi
 
 # ARM64 fixup. Xcode 5/iOS 7
 if [ "$IOS_ARCH" == "arm64" ]; then
-  IOS_FLAGS=-miphoneos-version-min=7
+  IOS_FLAGS="$IOS_FLAGS -miphoneos-version-min=7"
 fi
 
-# ARM64 Simulator fixup. Under Xcode 6/iOS 8, it uses x86_64 and not i386
-if [ "$IOS_ARCH" == "x86_64" ]; then
-  IOS_FLAGS=-miphoneos-version-min=8
+# Yet another ARM64 fixup.
+if [ "$APPLE_SDK" == "AppleTVOS" ]; then
+  IOS_FLAGS=""
+fi
+
+# Disable ASM for simulator. We are failing on Travis due to missing _start.
+# We may need to link against crt1.o for simulator builds. Also see
+# https://stackoverflow.com/q/24841283/608639
+# -watchos_simulator_version_min does not work though it is in LLVM sources.
+if [ "$APPLE_SDK" == "WatchSimulator" ]; then
+  IOS_FLAGS="$IOS_FLAGS -DCRYPTOPP_DISABLE_ASM"
+fi
+
+# Disable ASM for simulator. We are failing on Travis due to missing _start.
+# We may need to link against crt1.o for simulator builds. Also see
+# https://stackoverflow.com/q/24841283/608639
+# -tvos_simulator_version_min does not work though it is in LLVM sources.
+if [ "$APPLE_SDK" == "AppleTVSimulator" ]; then
+  IOS_FLAGS="$IOS_FLAGS -DCRYPTOPP_DISABLE_ASM"
 fi
 
 # Simulator uses i386 or x86_64, Device uses ARMv5, ARMv6, ARMv7, ARMv7s or ARMv8
@@ -249,16 +282,16 @@ fi
 # Only modify/export PATH if IOS_TOOLCHAIN good
 if [ ! -z "$IOS_TOOLCHAIN" ] && [ ! -z "$XCODE_TOOLCHAIN" ]; then
 
-	# And only modify PATH if IOS_TOOLCHAIN is not present
-	TOOL_PATH="$IOS_TOOLCHAIN:$XCODE_TOOLCHAIN"
-	LEN=${#TOOL_PATH}
-	SUBSTR=${PATH:0:$LEN}
-	if [ "$SUBSTR" != "$TOOL_PATH" ]; then
-		export PATH="$TOOL_PATH":"$PATH"
-	fi
+    # And only modify PATH if IOS_TOOLCHAIN is not present
+    TOOL_PATH="$IOS_TOOLCHAIN:$XCODE_TOOLCHAIN"
+    LEN=${#TOOL_PATH}
+    SUBSTR=${PATH:0:$LEN}
+    if [ "$SUBSTR" != "$TOOL_PATH" ]; then
+        export PATH="$TOOL_PATH":"$PATH"
+    fi
 else
-	echo "ERROR: unable to set new PATH."
-	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+    echo "ERROR: unable to set new PATH."
+    [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 ########################################
@@ -270,18 +303,29 @@ fi
 FOUND_ALL=1
 
 # Apple's embedded g++ cannot compile integer.cpp
-TOOLS=(clang clang++ ar ranlib libtool ld)
+TOOLS=(clang clang++ libtool ld)
 for tool in ${TOOLS[@]}
 do
-	if [ ! -e "$IOS_TOOLCHAIN/$tool" ] && [ ! -e "$XCODE_TOOLCHAIN/$tool" ]; then
-		echo "ERROR: unable to find $tool at IOS_TOOLCHAIN or XCODE_TOOLCHAIN"
-		FOUND_ALL=0
-	fi
+    if [ ! -e "$IOS_TOOLCHAIN/$tool" ] && [ ! -e "$XCODE_TOOLCHAIN/$tool" ]; then
+        echo "ERROR: unable to find $tool at IOS_TOOLCHAIN or XCODE_TOOLCHAIN"
+        FOUND_ALL=0
+    fi
 done
 
 if [ "$FOUND_ALL" -eq "0" ]; then
-	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+    [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
+
+# Exports added for Autotools. GNUmakefile-cross does not use them.
+# What to do for AR=libtool and ARFLAGS?
+export CPP="$IOS_TOOLCHAIN/cpp"
+export CC="$IOS_TOOLCHAIN/clang"
+export CXX="$IOS_TOOLCHAIN/clang++"
+export LD="$IOS_TOOLCHAIN/ld"
+export AS="$IOS_TOOLCHAIN/as"
+export AR="$IOS_TOOLCHAIN/ar"
+export RANLIB="$IOS_TOOLCHAIN/ranlib"
+export STRIP="$IOS_TOOLCHAIN/strip"
 
 echo
 echo "*******************************************************************************"
@@ -291,4 +335,4 @@ echo "shared object using 'HAS_SOLIB_VERSION=1 make -f GNUmakefile-cross'"
 echo "*******************************************************************************"
 echo
 
-[ "$0" = "$BASH_SOURCE" ] && exit 0 || return 0
+[ "$0" = "${BASH_SOURCE[0]}" ] && exit 0 || return 0

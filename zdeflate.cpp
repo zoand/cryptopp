@@ -98,11 +98,17 @@ HuffmanEncoder::HuffmanEncoder(const unsigned int *codeBits, unsigned int nCodes
 
 struct HuffmanNode
 {
-	// Coverity finding on uninitialized 'symbol' member
 	HuffmanNode()
 		: symbol(0), parent(0) {}
 	HuffmanNode(const HuffmanNode& rhs)
 		: symbol(rhs.symbol), parent(rhs.parent) {}
+	HuffmanNode& operator=(const HuffmanNode& rhs)
+	{
+		// No this guard
+		symbol = rhs.symbol;
+		parent = rhs.parent;
+		return *this;
+	}
 
 	size_t symbol;
 	union {size_t parent; unsigned depth, freq;};
@@ -233,7 +239,7 @@ Deflator::Deflator(BufferedTransformation *attachment, int deflateLevel, int log
 	, m_deflateLevel(-1)
 {
 	InitializeStaticEncoders();
-	IsolatedInitialize(MakeParameters("DeflateLevel", deflateLevel)("Log2WindowSize", log2WindowSize)("DetectUncompressible", detectUncompressible));
+	Deflator::IsolatedInitialize(MakeParameters("DeflateLevel", deflateLevel)("Log2WindowSize", log2WindowSize)("DetectUncompressible", detectUncompressible));
 }
 
 Deflator::Deflator(const NameValuePairs &parameters, BufferedTransformation *attachment)
@@ -241,7 +247,7 @@ Deflator::Deflator(const NameValuePairs &parameters, BufferedTransformation *att
 	, m_deflateLevel(-1)
 {
 	InitializeStaticEncoders();
-	IsolatedInitialize(parameters);
+	Deflator::IsolatedInitialize(parameters);
 }
 
 void Deflator::InitializeStaticEncoders()
@@ -676,11 +682,11 @@ void Deflator::EncodeBlock(bool eof, unsigned int blockType)
 			m_literalCounts[256] = 1;
 			HuffmanEncoder::GenerateCodeLengths(literalCodeLengths, 15, m_literalCounts, 286);
 			m_dynamicLiteralEncoder.Initialize(literalCodeLengths, 286);
-			unsigned int hlit = (unsigned int)(std::find_if(RevIt(literalCodeLengths.end()), RevIt(literalCodeLengths.begin()+257), std::bind2nd(std::not_equal_to<unsigned int>(), 0)).base() - (literalCodeLengths.begin()+257));
+			unsigned int hlit = (unsigned int)(FindIfNot(RevIt(literalCodeLengths.end()), RevIt(literalCodeLengths.begin()+257), 0).base() - (literalCodeLengths.begin()+257));
 
 			HuffmanEncoder::GenerateCodeLengths(distanceCodeLengths, 15, m_distanceCounts, 30);
 			m_dynamicDistanceEncoder.Initialize(distanceCodeLengths, 30);
-			unsigned int hdist = (unsigned int)(std::find_if(RevIt(distanceCodeLengths.end()), RevIt(distanceCodeLengths.begin()+1), std::bind2nd(std::not_equal_to<unsigned int>(), 0)).base() - (distanceCodeLengths.begin()+1));
+			unsigned int hdist = (unsigned int)(FindIfNot(RevIt(distanceCodeLengths.end()), RevIt(distanceCodeLengths.begin()+1), 0).base() - (distanceCodeLengths.begin()+1));
 
 			SecBlockWithHint<unsigned int, 286+30> combinedLengths(hlit+257+hdist+1);
 			memcpy(combinedLengths, literalCodeLengths, (hlit+257)*sizeof(unsigned int));

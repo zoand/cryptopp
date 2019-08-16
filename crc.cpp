@@ -1,48 +1,27 @@
 // crc.cpp - originally written and placed in the public domain by Wei Dai
 
 #include "pch.h"
+#include "config.h"
 #include "crc.h"
 #include "misc.h"
 #include "cpu.h"
 
 NAMESPACE_BEGIN(CryptoPP)
 
-// Visual Studio needs VS2008 (1500)
-//  http://msdn.microsoft.com/en-us/library/bb531394%28v=vs.90%29.aspx
-#if defined(_MSC_VER) && (_MSC_VER < 1500)
-# undef CRYPTOPP_BOOL_SSE4_INTRINSICS_AVAILABLE
+// crc_simd.cpp
+#if (CRYPTOPP_ARM_CRC32_AVAILABLE)
+extern void CRC32_Update_ARMV8(const byte *s, size_t n, word32& c);
+extern void CRC32C_Update_ARMV8(const byte *s, size_t n, word32& c);
 #endif
 
-#if CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64
-#if (CRYPTOPP_GCC_VERSION >= 40300 || __INTEL_COMPILER >= 1000 || __SUNPRO_CC >= 0x5110 || CRYPTOPP_LLVM_CLANG_VERSION >= 20300 || CRYPTOPP_APPLE_CLANG_VERSION >= 40000) && !defined(__SSE4_2__)
-GCC_INLINE unsigned int GCC_INLINE_ATTRIB
-MM_CRC32_U8(unsigned int crc, unsigned char val)
-{
-	asm ("crc32 %1, %0" : "+r"(crc) : "r"(val));
-	return crc;
-}
-GCC_INLINE unsigned int GCC_INLINE_ATTRIB
-MM_CRC32_U16(unsigned int crc, unsigned short val)
-{
-	asm ("crc32 %1, %0" : "+r"(crc) : "r"(val));
-	return crc;
-}
-GCC_INLINE unsigned int GCC_INLINE_ATTRIB
-MM_CRC32_U32(unsigned int crc, unsigned int val)
-{
-	asm ("crc32 %1, %0" : "+r"(crc) : "r"(val));
-	return crc;
-}
-#else
-	#define MM_CRC32_U8(a,b)  _mm_crc32_u8(a,b)
-	#define MM_CRC32_U16(a,b) _mm_crc32_u16(a,b)
-	#define MM_CRC32_U32(a,b) _mm_crc32_u32(a,b)
+// crc_simd.cpp
+#if (CRYPTOPP_SSE42_AVAILABLE)
+extern void CRC32C_Update_SSE42(const byte *s, size_t n, word32& c);
 #endif
-#endif // X86/X32/X64
 
 /* Table of CRC-32's of all single byte values (made by makecrc.c) */
 const word32 CRC32::m_tab[] = {
-#ifdef IS_LITTLE_ENDIAN
+#if (CRYPTOPP_LITTLE_ENDIAN)
 	0x00000000L, 0x77073096L, 0xee0e612cL, 0x990951baL, 0x076dc419L,
 	0x706af48fL, 0xe963a535L, 0x9e6495a3L, 0x0edb8832L, 0x79dcb8a4L,
 	0xe0d5e91eL, 0x97d2d988L, 0x09b64c2bL, 0x7eb17cbdL, 0xe7b82d07L,
@@ -151,6 +130,15 @@ const word32 CRC32::m_tab[] = {
 #endif
 };
 
+std::string CRC32::AlgorithmProvider() const
+{
+#if (CRYPTOPP_ARM_CRC32_AVAILABLE)
+	if (HasCRC32())
+		return "ARMv8";
+#endif
+	return "C++";
+}
+
 CRC32::CRC32()
 {
 	Reset();
@@ -158,18 +146,10 @@ CRC32::CRC32()
 
 void CRC32::Update(const byte *s, size_t n)
 {
-#if (CRYPTOPP_BOOL_ARM_CRC32_INTRINSICS_AVAILABLE)
+#if (CRYPTOPP_ARM_CRC32_AVAILABLE)
 	if (HasCRC32())
 	{
-		for(; !IsAligned<word32>(s) && n > 0; s++, n--)
-			m_crc = __crc32b(m_crc, *s);
-
-		for(; n > 4; s+=4, n-=4)
-			m_crc = __crc32w(m_crc, *(const word32 *)(void*)s);
-
-		for(; n > 0; s++, n--)
-			m_crc = __crc32b(m_crc, *s);
-
+		CRC32_Update_ARMV8(s, n, m_crc);
 		return;
 	}
 #endif
@@ -186,8 +166,7 @@ void CRC32::Update(const byte *s, size_t n)
 		crc = m_tab[CRC32_INDEX(crc)] ^ CRC32_SHIFTED(crc);
 		crc = m_tab[CRC32_INDEX(crc)] ^ CRC32_SHIFTED(crc);
 		crc = m_tab[CRC32_INDEX(crc)] ^ CRC32_SHIFTED(crc);
-		n -= 4;
-		s += 4;
+		n -= 4; s += 4;
 	}
 
 	while (n--)
@@ -210,7 +189,7 @@ void CRC32::TruncatedFinal(byte *hash, size_t size)
 // Castagnoli CRC32C (iSCSI)
 
 const word32 CRC32C::m_tab[] = {
-#ifdef IS_LITTLE_ENDIAN
+#if (CRYPTOPP_LITTLE_ENDIAN)
     0x00000000L, 0xf26b8303L, 0xe13b70f7L, 0x1350f3f4L, 0xc79a971fL,
     0x35f1141cL, 0x26a1e7e8L, 0xd4ca64ebL, 0x8ad958cfL, 0x78b2dbccL,
     0x6be22838L, 0x9989ab3bL, 0x4d43cfd0L, 0xbf284cd3L, 0xac78bf27L,
@@ -319,6 +298,19 @@ const word32 CRC32C::m_tab[] = {
 #endif
 };
 
+std::string CRC32C::AlgorithmProvider() const
+{
+#if (CRYPTOPP_ARM_CRC32_AVAILABLE)
+	if (HasCRC32())
+		return "ARMv8";
+#endif
+#if (CRYPTOPP_SSE42_AVAILABLE)
+	if (HasSSE42())
+		return "SSE4.2";
+#endif
+	return "C++";
+}
+
 CRC32C::CRC32C()
 {
 	Reset();
@@ -326,32 +318,16 @@ CRC32C::CRC32C()
 
 void CRC32C::Update(const byte *s, size_t n)
 {
-#if CRYPTOPP_BOOL_SSE4_INTRINSICS_AVAILABLE
-	if (HasSSE4())
+#if (CRYPTOPP_SSE42_AVAILABLE)
+	if (HasSSE42())
 	{
-		for(; !IsAligned<word32>(s) && n > 0; s++, n--)
-			m_crc = MM_CRC32_U8(m_crc, *s);
-
-		for(; n > 4; s+=4, n-=4)
-			m_crc = MM_CRC32_U32(m_crc, *(const word32 *)(void*)s);
-
-		for(; n > 0; s++, n--)
-			m_crc = MM_CRC32_U8(m_crc, *s);
-
+		CRC32C_Update_SSE42(s, n, m_crc);
 		return;
 	}
-#elif (CRYPTOPP_BOOL_ARM_CRC32_INTRINSICS_AVAILABLE)
+#elif (CRYPTOPP_ARM_CRC32_AVAILABLE)
 	if (HasCRC32())
 	{
-		for(; !IsAligned<word32>(s) && n > 0; s++, n--)
-			m_crc = __crc32cb(m_crc, *s);
-
-		for(; n > 4; s+=4, n-=4)
-			m_crc = __crc32cw(m_crc, *(const word32 *)(void*)s);
-
-		for(; n > 0; s++, n--)
-			m_crc = __crc32cb(m_crc, *s);
-
+		CRC32C_Update_ARMV8(s, n, m_crc);
 		return;
 	}
 #endif
@@ -368,8 +344,7 @@ void CRC32C::Update(const byte *s, size_t n)
 		crc = m_tab[CRC32_INDEX(crc)] ^ CRC32_SHIFTED(crc);
 		crc = m_tab[CRC32_INDEX(crc)] ^ CRC32_SHIFTED(crc);
 		crc = m_tab[CRC32_INDEX(crc)] ^ CRC32_SHIFTED(crc);
-		n -= 4;
-		s += 4;
+		n -= 4; s += 4;
 	}
 
 	while (n--)

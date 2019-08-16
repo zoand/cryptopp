@@ -28,6 +28,14 @@
 #include "ec2n.h"
 #include "misc.h"
 
+#include <iostream>
+#include <sstream>
+
+// Squash MS LNK4221 and libtool warnings
+#ifndef CRYPTOPP_MANUALLY_INSTANTIATE_TEMPLATES
+extern const char ECCRYPTO_FNAME[] = __FILE__;
+#endif
+
 NAMESPACE_BEGIN(CryptoPP)
 
 #if 0
@@ -47,7 +55,7 @@ static void ECDSA_TestInstantiations()
 #endif
 
 ANONYMOUS_NAMESPACE_BEGIN
-Integer ConvertToInteger(const PolynomialMod2 &x)
+inline Integer ConvertToInteger(const PolynomialMod2 &x)
 {
 	unsigned int l = x.ByteCount();
 	SecByteBlock temp(l);
@@ -60,7 +68,7 @@ inline Integer ConvertToInteger(const Integer &x)
 	return x;
 }
 
-bool CheckMOVCondition(const Integer &q, const Integer &r)
+inline bool CheckMOVCondition(const Integer &q, const Integer &r)
 {
 	// see "Updated standards for validating elliptic curves", http://eprint.iacr.org/2007/343
 	Integer t = 1;
@@ -86,23 +94,27 @@ template <class T> struct EcRecommendedParameters;
 template<> struct EcRecommendedParameters<EC2N>
 {
 	EcRecommendedParameters(const OID &oid, unsigned int t2, unsigned int t3, unsigned int t4, const char *a, const char *b, const char *g, const char *n, unsigned int h)
-		: oid(oid), t0(0), t1(0), t2(t2), t3(t3), t4(t4), a(a), b(b), g(g), n(n), h(h) {}
+		: oid(oid), a(a), b(b), g(g), n(n), h(h), t0(0), t1(0), t2(t2), t3(t3), t4(t4) {}
 	EcRecommendedParameters(const OID &oid, unsigned int t0, unsigned int t1, unsigned int t2, unsigned int t3, unsigned int t4, const char *a, const char *b, const char *g, const char *n, unsigned int h)
-		: oid(oid), t0(t0), t1(t1), t2(t2), t3(t3), t4(t4), a(a), b(b), g(g), n(n), h(h) {}
+		: oid(oid), a(a), b(b), g(g), n(n), h(h), t0(t0), t1(t1), t2(t2), t3(t3), t4(t4) {}
 	EC2N *NewEC() const
 	{
 		StringSource ssA(a, true, new HexDecoder);
 		StringSource ssB(b, true, new HexDecoder);
 		if (t0 == 0)
-			return new EC2N(GF2NT(t2, t3, t4), EC2N::FieldElement(ssA, (size_t)ssA.MaxRetrievable()), EC2N::FieldElement(ssB, (size_t)ssB.MaxRetrievable()));
+		{
+			if (t2 == 233 && t3 == 74 && t4 == 0)
+				return new EC2N(GF2NT233(233, 74, 0), EC2N::FieldElement(ssA, (size_t)ssA.MaxRetrievable()), EC2N::FieldElement(ssB, (size_t)ssB.MaxRetrievable()));
+			else
+				return new EC2N(GF2NT(t2, t3, t4), EC2N::FieldElement(ssA, (size_t)ssA.MaxRetrievable()), EC2N::FieldElement(ssB, (size_t)ssB.MaxRetrievable()));
+		}
 		else
 			return new EC2N(GF2NPP(t0, t1, t2, t3, t4), EC2N::FieldElement(ssA, (size_t)ssA.MaxRetrievable()), EC2N::FieldElement(ssB, (size_t)ssB.MaxRetrievable()));
 	};
 
 	OID oid;
-	unsigned int t0, t1, t2, t3, t4;
 	const char *a, *b, *g, *n;
-	unsigned int h;
+	unsigned int h, t0, t1, t2, t3, t4;
 };
 
 template<> struct EcRecommendedParameters<ECP>
@@ -118,8 +130,7 @@ template<> struct EcRecommendedParameters<ECP>
 	};
 
 	OID oid;
-	const char *p;
-	const char *a, *b, *g, *n;
+	const char *p, *a, *b, *g, *n;
 	unsigned int h;
 };
 
@@ -268,10 +279,27 @@ static void GetRecommendedParameters(const EcRecommendedParameters<EC2N> *&begin
 	end = rec + sizeof(rec)/sizeof(rec[0]);
 }
 
+// See https://www.cryptopp.com/wiki/SM2 for details on sm2p256v1 and sm2encrypt_recommendedParameters
 static void GetRecommendedParameters(const EcRecommendedParameters<ECP> *&begin, const EcRecommendedParameters<ECP> *&end)
 {
 	// this array must be sorted by OID
 	static const EcRecommendedParameters<ECP> rec[] = {
+		EcRecommendedParameters<ECP>(ASN1::sm2p256v1(),
+			"FFFFFFFE FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF 00000000 FFFFFFFF FFFFFFFF",
+			"FFFFFFFE FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF 00000000 FFFFFFFF FFFFFFFC",
+			"28E9FA9E 9D9F5E34 4D5A9E4B CF6509A7 F39789F5 15AB8F92 DDBCBD41 4D940E93",
+			"04" "32C4AE2C 1F198119 5F990446 6A39C994 8FE30BBF F2660BE1 715A4589 334C74C7"
+			     "BC3736A2 F4F6779C 59BDCEE3 6B692153 D0A9877C C62A4740 02DF32E5 2139F0A0",
+			"FFFFFFFE FFFFFFFF FFFFFFFF FFFFFFFF 7203DF6B 21C6052B 53BBF409 39D54123",
+			1),
+		EcRecommendedParameters<ECP>(ASN1::sm2encrypt_recommendedParameters(),
+			"FFFFFFFE FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF 00000000 FFFFFFFF FFFFFFFF",
+			"FFFFFFFE FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF 00000000 FFFFFFFF FFFFFFFC",
+			"28E9FA9E 9D9F5E34 4D5A9E4B CF6509A7 F39789F5 15AB8F92 DDBCBD41 4D940E93",
+			"04" "32C4AE2C 1F198119 5F990446 6A39C994 8FE30BBF F2660BE1 715A4589 334C74C7"
+			     "BC3736A2 F4F6779C 59BDCEE3 6B692153 D0A9877C C62A4740 02DF32E5 2139F0A0",
+			"FFFFFFFE FFFFFFFF FFFFFFFF FFFFFFFF 7203DF6B 21C6052B 53BBF409 39D54123",
+			1),
 		EcRecommendedParameters<ECP>(ASN1::secp192r1(),
 			"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFFFFFFFFFF",
 			"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFFFFFFFFFC",
@@ -470,7 +498,7 @@ bool DL_GroupParameters_EC<EC>::GetVoidValue(const char *name, const std::type_i
 {
 	if (strcmp(name, Name::GroupOID()) == 0)
 	{
-		if (m_oid.m_values.empty())
+		if (m_oid.Empty())
 			return false;
 
 		this->ThrowIfTypeMismatch(name, typeid(OID), valueType);
@@ -548,7 +576,7 @@ void DL_GroupParameters_EC<EC>::BERDecode(BufferedTransformation &bt)
 template <class EC>
 void DL_GroupParameters_EC<EC>::DEREncode(BufferedTransformation &bt) const
 {
-	if (m_encodeAsOID && !m_oid.m_values.empty())
+	if (m_encodeAsOID && !m_oid.Empty())
 		m_oid.DEREncode(bt);
 	else
 	{
@@ -580,7 +608,7 @@ template <class EC>
 Integer DL_GroupParameters_EC<EC>::ConvertElementToInteger(const Element &element) const
 {
 	return ConvertToInteger(element.x);
-};
+}
 
 template <class EC>
 bool DL_GroupParameters_EC<EC>::ValidateGroup(RandomNumberGenerator &rng, unsigned int level) const
@@ -658,6 +686,13 @@ OID DL_GroupParameters_EC<EC>::GetAlgorithmID() const
 	return ASN1::id_ecPublicKey();
 }
 
+std::ostream& operator<<(std::ostream& os, const DL_GroupParameters_EC<ECP>::Element& obj)
+{
+	std::ostringstream oss;
+	oss << "(" << std::hex << obj.x << ", " << std::hex  << obj.y << ")";
+	return os << oss.str();
+}
+
 // ******************************************************************
 
 template <class EC>
@@ -732,7 +767,7 @@ void DL_PrivateKey_EC<EC>::DEREncodePrivateKey(BufferedTransformation &bt) const
 // ******************************************************************
 
 template <class EC>
-void DL_PublicKey_ECGDSA_ISO15946<EC>::BERDecodePublicKey(BufferedTransformation &bt, bool parametersPresent, size_t size)
+void DL_PublicKey_ECGDSA<EC>::BERDecodePublicKey(BufferedTransformation &bt, bool parametersPresent, size_t size)
 {
 	CRYPTOPP_UNUSED(parametersPresent);
 
@@ -743,7 +778,7 @@ void DL_PublicKey_ECGDSA_ISO15946<EC>::BERDecodePublicKey(BufferedTransformation
 }
 
 template <class EC>
-void DL_PublicKey_ECGDSA_ISO15946<EC>::DEREncodePublicKey(BufferedTransformation &bt) const
+void DL_PublicKey_ECGDSA<EC>::DEREncodePublicKey(BufferedTransformation &bt) const
 {
 	this->GetGroupParameters().GetCurve().EncodePoint(bt, this->GetPublicElement(), this->GetGroupParameters().GetPointCompression());
 }
@@ -751,7 +786,7 @@ void DL_PublicKey_ECGDSA_ISO15946<EC>::DEREncodePublicKey(BufferedTransformation
 // ******************************************************************
 
 template <class EC>
-void DL_PrivateKey_ECGDSA_ISO15946<EC>::BERDecodePrivateKey(BufferedTransformation &bt, bool parametersPresent, size_t size)
+void DL_PrivateKey_ECGDSA<EC>::BERDecodePrivateKey(BufferedTransformation &bt, bool parametersPresent, size_t size)
 {
 	CRYPTOPP_UNUSED(size);
 	BERSequenceDecoder seq(bt);
@@ -790,7 +825,7 @@ void DL_PrivateKey_ECGDSA_ISO15946<EC>::BERDecodePrivateKey(BufferedTransformati
 }
 
 template <class EC>
-void DL_PrivateKey_ECGDSA_ISO15946<EC>::DEREncodePrivateKey(BufferedTransformation &bt) const
+void DL_PrivateKey_ECGDSA<EC>::DEREncodePrivateKey(BufferedTransformation &bt) const
 {
 	DERSequenceEncoder privateKey(bt);
 		DEREncodeUnsigned<word32>(privateKey, 1);	// version

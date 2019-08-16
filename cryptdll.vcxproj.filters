@@ -44,6 +44,9 @@
     <ClCompile Include="cryptlib.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="darn.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="des.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -89,7 +92,13 @@
     <ClCompile Include="gcm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="gcm_simd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="gf2n.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="gf2n_simd.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="gfpcrypt.cpp">
@@ -152,6 +161,9 @@
     <ClCompile Include="rijndael.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="rijndael_simd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="rng.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -164,10 +176,16 @@
     <ClCompile Include="sha.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="sha_simd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="simple.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="skipjack.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sse_simd.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="strciphr.cpp">
@@ -214,10 +232,43 @@
     <ClInclude Include="config.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="config_align.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_asm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_cpu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_cxx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_dll.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_int.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_misc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_ns.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_os.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="config_ver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="cpu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="cryptlib.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="darn.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="des.h">
